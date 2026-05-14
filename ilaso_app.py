@@ -48,12 +48,15 @@ W_SHARE = 20000
 # ============================================================
 
 st.set_page_config(
-    st.markdown("""
-<style>
+    page_title="ILASO",
+    page_icon="📘",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-.main {
-    background-color: #F8FAFC;
-}
+st.markdown("""
+<style>
+.main { background-color: #F8FAFC; }
 
 .block-container {
     padding-top: 1.2rem;
@@ -96,102 +99,20 @@ st.set_page_config(
     border-radius: 999px;
     font-weight: 800;
 }
-
-.metric-card {
-    background: #FFFFFF;
-    border-radius: 20px;
-    padding: 20px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-    border: 1px solid #E2E8F0;
-}
-
-.metric-label {
-    font-size: 13px;
-    color: #64748B;
-    font-weight: 800;
-}
-
-.metric-value {
-    font-size: 32px;
-    color: #0B3678;
-    font-weight: 900;
-}
-
-.metric-note {
-    color: #64748B;
-    font-size: 12px;
-}
-
-.section-title {
-    color: #0B1F3A;
-    font-size: 26px;
-    font-weight: 900;
-}
-
-.upload-card {
-    background: white;
-    border: 1px solid #E2E8F0;
-    border-radius: 22px;
-    padding: 24px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-}
-
-.stButton > button {
-    background: linear-gradient(135deg, #2563EB, #1D4ED8);
-    color: white;
-    border-radius: 12px;
-    border: none;
-    font-weight: 900;
-}
-
 </style>
 """, unsafe_allow_html=True)
-    page_title="ILASO",
-    page_icon="📘",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-
-# ============================================================
-# CSS
-# ============================================================
 
 st.markdown("""
 <div class="ilaso-hero">
-
-<div class="ilaso-title">
-ILASO
-</div>
-
-<div class="ilaso-subtitle">
-Intelligent Lecturer Allocation System with Correct Shared-Class Detection
-</div>
-
-<div class="ilaso-tag">
-1 class = 1 lecturer by default • Sharing minimized • Late-entry lecturers supported
-</div>
-
+    <div class="ilaso-title">ILASO</div>
+    <div class="ilaso-subtitle">
+        Intelligent Lecturer Allocation System with Correct Shared-Class Detection
+    </div>
+    <div class="ilaso-tag">
+        1 class = 1 lecturer by default • Sharing minimized • Late-entry lecturers supported
+    </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.markdown(
-    """
-    <div class="hero">
-        <div class="hero-title">ILASO</div>
-        <div class="hero-subtitle">
-            Intelligent Lecturer Allocation System with Correct Shared-Class Detection
-        </div>
-        <span class="hero-pill">1 class = 1 lecturer by default • Sharing minimized • Late-entry lecturers supported</span>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
 
 # ============================================================
 # HELPER FUNCTIONS
