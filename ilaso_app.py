@@ -1,12 +1,9 @@
 # ============================================================
-# ILASO - Intelligent Lecturer Allocation System
-# With Add / Close Subject-Class Manager
+# ILASO PREMIUM CLEAN VERSION
+# Intelligent Lecturer Allocation System
 # ============================================================
-# Run:
-# streamlit run ilaso_app.py
-#
-# Install:
 # pip install streamlit pandas numpy openpyxl pulp plotly
+# streamlit run ilaso_app.py
 # ============================================================
 
 import io
@@ -25,6 +22,28 @@ except Exception:
     px = None
 
 
+SEMESTER_WEEKS = 14
+DEFAULT_MIN = 15
+DEFAULT_MAX = 18
+TARGET_CREDIT = 15
+MAX_SUBJECTS = 2
+MAX_CLASSES_SAME_SUBJECT = 3
+
+SCORE_PREF = {
+    1: 100,
+    2: 80,
+    3: 60,
+    4: 40,
+    5: 20
+}
+
+SCORE_NOT_PREF = -30
+
+W_PREF = 80
+W_UNDER = 5000
+W_BALANCE = 2500
+
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
@@ -33,42 +52,157 @@ st.set_page_config(
     page_title="ILASO",
     page_icon="📘",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 
 # ============================================================
-# CSS
+# PREMIUM CSS
 # ============================================================
 
 st.markdown(
     """
     <style>
-    .block-container {padding-top:1.2rem; padding-bottom:2rem;}
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+
+    .block-container {
+        padding-top: 1.2rem;
+        padding-left: 2.5rem;
+        padding-right: 2.5rem;
+        max-width: 1400px;
+    }
+
+    .main-bg {
+        background: #F5F7FB;
+    }
+
     .hero {
-        background: linear-gradient(135deg,#061A40,#0B3D91);
-        color:white; padding:26px 32px; border-radius:24px;
-        box-shadow:0 12px 35px rgba(0,0,0,0.16); margin-bottom:20px;
+        background: linear-gradient(135deg, #071A3D 0%, #0B2F6B 55%, #123C7C 100%);
+        border-radius: 28px;
+        padding: 34px 42px;
+        margin-bottom: 28px;
+        box-shadow: 0 18px 45px rgba(7,26,61,0.20);
+        color: white;
     }
-    .hero h1 {font-size:38px; margin:0; font-weight:850;}
-    .hero p {font-size:16px; color:#EAF0FF; margin-top:5px;}
+
+    .hero-title {
+        font-size: 46px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+    }
+
+    .hero-subtitle {
+        font-size: 18px;
+        color: #EAF0FF;
+        margin-bottom: 14px;
+    }
+
+    .hero-pill {
+        display: inline-block;
+        background: rgba(255, 217, 102, 0.16);
+        border: 1px solid rgba(255, 217, 102, 0.45);
+        color: #FFE08A;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 13px;
+    }
+
+    .section-title {
+        font-size: 24px;
+        font-weight: 900;
+        color: #071A3D;
+        margin-top: 20px;
+        margin-bottom: 10px;
+    }
+
+    .section-note {
+        color: #667085;
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
+
     .metric-card {
-        background:white; border:1px solid #E6EAF2; border-radius:18px;
-        padding:18px; box-shadow:0 8px 24px rgba(10,40,90,0.08);
+        background: white;
+        border: 1px solid #E6EAF2;
+        border-radius: 22px;
+        padding: 20px 22px;
+        box-shadow: 0 10px 28px rgba(16, 39, 80, 0.08);
+        min-height: 122px;
     }
-    .metric-label {font-size:12px; color:#667085; font-weight:700; text-transform:uppercase;}
-    .metric-value {font-size:30px; font-weight:850; color:#061A40;}
-    .section-title {font-size:22px; font-weight:850; color:#061A40; margin-top:16px;}
+
+    .metric-label {
+        font-size: 12px;
+        color: #667085;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+
+    .metric-value {
+        font-size: 34px;
+        font-weight: 900;
+        color: #071A3D;
+        margin-top: 6px;
+    }
+
+    .metric-note {
+        font-size: 12px;
+        color: #98A2B3;
+        margin-top: 4px;
+    }
+
+    .soft-card {
+        background: white;
+        border: 1px solid #E6EAF2;
+        border-radius: 22px;
+        padding: 22px;
+        box-shadow: 0 10px 28px rgba(16, 39, 80, 0.06);
+        margin-bottom: 16px;
+    }
+
+    div[data-testid="stFileUploader"] {
+        background: white;
+        border: 1px solid #E6EAF2;
+        border-radius: 20px;
+        padding: 18px;
+        box-shadow: 0 8px 22px rgba(16, 39, 80, 0.06);
+    }
+
+    .stButton > button {
+        border-radius: 14px;
+        font-weight: 800;
+        height: 3rem;
+    }
+
+    .footer {
+        color: #98A2B3;
+        font-size: 13px;
+        margin-top: 28px;
+        padding-top: 18px;
+        border-top: 1px solid #E6EAF2;
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
+
+# ============================================================
+# HEADER
+# ============================================================
+
 st.markdown(
     """
     <div class="hero">
-        <h1>ILASO</h1>
-        <p>Intelligent Lecturer Allocation with Class Manager, Closed-Class Handling and Lecturer Analytics</p>
+        <div class="hero-title">ILASO</div>
+        <div class="hero-subtitle">
+            Intelligent Lecturer Allocation System for Subject Allocation, Closed-Class Handling and Lecturer Workload Analytics
+        </div>
+        <span class="hero-pill">Clean Interface • No Manual Parameters • Uses Lecturer File Settings</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -76,53 +210,8 @@ st.markdown(
 
 
 # ============================================================
-# BASIC SETTINGS
+# HELPER FUNCTIONS
 # ============================================================
-
-st.sidebar.title("⚙️ ILASO Setting")
-
-semester_weeks = st.sidebar.number_input("Jumlah minggu semester", 1, 30, 14, 1)
-target_credit = st.sidebar.number_input("Target kredit pensyarah", 1, 40, 15, 1)
-default_min = st.sidebar.number_input("Default minimum kredit", 0, 40, 15, 1)
-default_max = st.sidebar.number_input("Default maksimum kredit", 0, 40, 18, 1)
-max_subjects = st.sidebar.number_input("Maksimum subjek unik / pensyarah", 1, 5, 2, 1)
-max_classes_same_subject = st.sidebar.number_input("Maksimum kelas sama subjek / pensyarah", 1, 10, 3, 1)
-
-advanced = st.sidebar.toggle("Advanced Mode", value=False)
-
-if advanced:
-    score_p1 = st.sidebar.number_input("Skor Pilihan 1", -1000, 1000, 100, 5)
-    score_p2 = st.sidebar.number_input("Skor Pilihan 2", -1000, 1000, 80, 5)
-    score_p3 = st.sidebar.number_input("Skor Pilihan 3", -1000, 1000, 60, 5)
-    score_p4 = st.sidebar.number_input("Skor Pilihan 4", -1000, 1000, 40, 5)
-    score_p5 = st.sidebar.number_input("Skor Pilihan 5", -1000, 1000, 20, 5)
-    score_not_pref = st.sidebar.number_input("Skor bukan pilihan", -1000, 1000, -30, 5)
-
-    w_pref = st.sidebar.number_input("Weight preference", 1, 100000, 80, 10)
-    w_under = st.sidebar.number_input("Penalty underload", 1, 100000, 5000, 100)
-    w_balance = st.sidebar.number_input("Penalty imbalance", 1, 100000, 2500, 100)
-else:
-    score_p1, score_p2, score_p3, score_p4, score_p5 = 100, 80, 60, 40, 20
-    score_not_pref = -30
-    w_pref, w_under, w_balance = 80, 5000, 2500
-
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def metric_card(label, value, note=""):
-    st.markdown(
-        f"""
-        <div class="metric-card">
-            <div class="metric-label">{label}</div>
-            <div class="metric-value">{value}</div>
-            <div style="font-size:12px;color:#7A869A;">{note}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
 
 def clean_text(x):
     if pd.isna(x):
@@ -141,13 +230,26 @@ def clean_name(x):
 
 def standardize_status(x):
     x = clean_text(x)
-    if x in ["", "OPEN", "AKTIF", "ACTIVE", "BUKA"]:
+    if x in ["", "BUKA", "OPEN", "AKTIF", "ACTIVE"]:
         return "BUKA"
-    if x in ["TUTUP", "CLOSE", "CLOSED", "CANCEL", "CANCELLED", "BATAL"]:
-        return "TUTUP"
-    if x in ["NEW", "BARU", "BAHARU"]:
+    if x in ["BARU", "BAHARU", "NEW"]:
         return "BARU"
+    if x in ["TUTUP", "CLOSE", "CLOSED", "BATAL", "CANCEL", "CANCELLED"]:
+        return "TUTUP"
     return x
+
+
+def metric_card(label, value, note=""):
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            <div class="metric-note">{note}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 def read_file(uploaded_file, expected_sheet=None):
@@ -169,8 +271,9 @@ def prepare_class_data(file_classes):
 
     required = ["kod_kursus", "kelas_baru", "jam_kredit"]
     missing = [c for c in required if c not in df.columns]
+
     if missing:
-        st.error(f"Fail kelas tiada column wajib: {missing}")
+        st.error(f"Fail Jadual Kelas tiada column wajib: {missing}")
         st.stop()
 
     df["kod_kursus"] = df["kod_kursus"].map(clean_text)
@@ -179,53 +282,72 @@ def prepare_class_data(file_classes):
 
     if "status_kelas" not in df.columns:
         df["status_kelas"] = "BUKA"
+
     df["status_kelas"] = df["status_kelas"].map(standardize_status)
 
     if "saiz_kelas" not in df.columns:
         df["saiz_kelas"] = 0
+
     df["saiz_kelas"] = pd.to_numeric(df["saiz_kelas"], errors="coerce").fillna(0).astype(int)
 
-    for c in ["campuran_group", "perincian", "kredit_info"]:
-        if c not in df.columns:
-            df[c] = ""
-
-    if "pensyarah_asal" not in df.columns:
-        df["pensyarah_asal"] = ""
-
-    if "lock_agihan" not in df.columns:
-        df["lock_agihan"] = "TIDAK"
+    for col in ["campuran_group", "perincian", "kredit_info", "pensyarah_asal", "lock_agihan"]:
+        if col not in df.columns:
+            df[col] = ""
 
     if "minggu_mula_kelas" not in df.columns:
         df["minggu_mula_kelas"] = 1
 
     if "minggu_akhir_kelas" not in df.columns:
-        df["minggu_akhir_kelas"] = semester_weeks
+        df["minggu_akhir_kelas"] = SEMESTER_WEEKS
 
     df["minggu_mula_kelas"] = pd.to_numeric(df["minggu_mula_kelas"], errors="coerce").fillna(1).astype(int)
-    df["minggu_akhir_kelas"] = pd.to_numeric(df["minggu_akhir_kelas"], errors="coerce").fillna(semester_weeks).astype(int)
+    df["minggu_akhir_kelas"] = pd.to_numeric(df["minggu_akhir_kelas"], errors="coerce").fillna(SEMESTER_WEEKS).astype(int)
 
-    df = df[(df["kod_kursus"] != "") & (df["kelas_baru"] != "") & (df["jam_kredit"] > 0)].copy()
+    df = df[
+        (df["kod_kursus"] != "") &
+        (df["kelas_baru"] != "") &
+        (df["jam_kredit"] > 0)
+    ].copy()
+
     df["kelas_id"] = df["kod_kursus"] + "-" + df["kelas_baru"].astype(str)
 
     df = df.drop_duplicates(subset=["kelas_id"], keep="first").copy()
 
-    preferred_cols = [
-        "kelas_id", "kod_kursus", "kelas_baru", "status_kelas", "jam_kredit",
-        "saiz_kelas", "campuran_group", "perincian", "kredit_info",
-        "pensyarah_asal", "lock_agihan", "minggu_mula_kelas", "minggu_akhir_kelas"
+    cols = [
+        "kelas_id",
+        "kod_kursus",
+        "kelas_baru",
+        "status_kelas",
+        "jam_kredit",
+        "saiz_kelas",
+        "campuran_group",
+        "perincian",
+        "kredit_info",
+        "pensyarah_asal",
+        "lock_agihan",
+        "minggu_mula_kelas",
+        "minggu_akhir_kelas"
     ]
 
-    other_cols = [c for c in df.columns if c not in preferred_cols]
-    return df[preferred_cols + other_cols]
+    other_cols = [c for c in df.columns if c not in cols]
+
+    return df[cols + other_cols]
 
 
 def prepare_lecturer_data(file_lect):
     raw = read_file(file_lect, expected_sheet="Pensyarah").copy()
 
-    required = ["Nama Pensyarah", "Peranan", "Minimum Jam Kredit", "Maksimum Jam Kredit"]
+    required = [
+        "Nama Pensyarah",
+        "Peranan",
+        "Minimum Jam Kredit",
+        "Maksimum Jam Kredit"
+    ]
+
     missing = [c for c in required if c not in raw.columns]
+
     if missing:
-        st.error(f"Fail pensyarah tiada column wajib: {missing}")
+        st.error(f"Fail Pensyarah tiada column wajib: {missing}")
         st.stop()
 
     df = raw.rename(columns={
@@ -237,8 +359,11 @@ def prepare_lecturer_data(file_lect):
 
     df["nama"] = df["nama"].map(clean_name)
     df["peranan"] = df["peranan"].astype(str).str.strip()
-    df["min_kredit"] = pd.to_numeric(df["min_kredit"], errors="coerce").fillna(default_min).astype(int)
-    df["max_kredit"] = pd.to_numeric(df["max_kredit"], errors="coerce").fillna(default_max).astype(int)
+
+    df["min_kredit"] = pd.to_numeric(df["min_kredit"], errors="coerce").fillna(DEFAULT_MIN).astype(int)
+    df["max_kredit"] = pd.to_numeric(df["max_kredit"], errors="coerce").fillna(DEFAULT_MAX).astype(int)
+
+    df.loc[df["min_kredit"] > df["max_kredit"], "min_kredit"] = df["max_kredit"]
 
     for i in range(1, 6):
         col = f"Pilihan {i}"
@@ -248,65 +373,63 @@ def prepare_lecturer_data(file_lect):
 
     if "status" not in df.columns:
         df["status"] = "AKTIF"
+
     df["status"] = df["status"].map(clean_text).replace({"": "AKTIF"})
 
     if "minggu_mula_available" not in df.columns:
         df["minggu_mula_available"] = 1
 
     if "minggu_akhir_available" not in df.columns:
-        df["minggu_akhir_available"] = semester_weeks
+        df["minggu_akhir_available"] = SEMESTER_WEEKS
 
     df["minggu_mula_available"] = pd.to_numeric(df["minggu_mula_available"], errors="coerce").fillna(1).astype(int)
-    df["minggu_akhir_available"] = pd.to_numeric(df["minggu_akhir_available"], errors="coerce").fillna(semester_weeks).astype(int)
+    df["minggu_akhir_available"] = pd.to_numeric(df["minggu_akhir_available"], errors="coerce").fillna(SEMESTER_WEEKS).astype(int)
 
     df["available_weeks"] = (
         df["minggu_akhir_available"] - df["minggu_mula_available"] + 1
-    ).clip(lower=0, upper=semester_weeks)
+    ).clip(lower=0, upper=SEMESTER_WEEKS)
 
-    df["availability_ratio"] = df["available_weeks"] / semester_weeks
+    df["availability_ratio"] = df["available_weeks"] / SEMESTER_WEEKS
 
     df["effective_min_kredit"] = np.floor(df["min_kredit"] * df["availability_ratio"]).astype(int)
     df["effective_max_kredit"] = np.floor(df["max_kredit"] * df["availability_ratio"]).astype(int)
 
     cuti_mask = (
         df["peranan"].str.lower().str.contains("cuti", na=False) |
-        df["status"].isin(["CUTI", "TIDAK_AKTIF", "SABBATICAL"])
+        df["status"].isin(["CUTI", "TIDAK_AKTIF", "SABBATICAL", "CUTI_BERSALIN"])
     )
 
     df.loc[cuti_mask, ["effective_min_kredit", "effective_max_kredit"]] = 0
+
     df["active"] = df["effective_max_kredit"] > 0
 
     df = df[df["nama"] != ""].drop_duplicates(subset=["nama"], keep="first").copy()
+
     return df
 
 
-def preference_score_table(dfl):
-    score_map = {
-        1: score_p1,
-        2: score_p2,
-        3: score_p3,
-        4: score_p4,
-        5: score_p5
-    }
-
+def build_preference_score(dfl):
     pref = {}
 
     for _, row in dfl.iterrows():
         lname = row["nama"]
+
         for i in range(1, 6):
             subj = clean_text(row.get(f"Pilihan {i}", ""))
+
             if subj:
-                pref[(lname, subj)] = score_map[i]
+                pref[(lname, subj)] = SCORE_PREF[i]
 
     return pref
 
 
 def get_pref_score(lname, subject, pref):
-    return int(pref.get((lname, subject), score_not_pref))
+    return int(pref.get((lname, subject), SCORE_NOT_PREF))
 
 
 def get_pref_label(lname, subject, dfl):
     row = dfl[dfl["nama"] == lname]
+
     if row.empty:
         return "Tidak diketahui"
 
@@ -319,43 +442,52 @@ def get_pref_label(lname, subject, dfl):
     return "Bukan pilihan"
 
 
-def is_available(lrow, crow):
+def is_available_for_class(lect_row, class_row):
     return max(
-        int(lrow["minggu_mula_available"]),
-        int(crow["minggu_mula_kelas"])
+        int(lect_row["minggu_mula_available"]),
+        int(class_row["minggu_mula_kelas"])
     ) <= min(
-        int(lrow["minggu_akhir_available"]),
-        int(crow["minggu_akhir_kelas"])
+        int(lect_row["minggu_akhir_available"]),
+        int(class_row["minggu_akhir_kelas"])
     )
+
+
+def to_excel_bytes(dfs):
+    with io.BytesIO() as buffer:
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            for name, df in dfs.items():
+                df.to_excel(writer, index=False, sheet_name=name[:31])
+        return buffer.getvalue()
 
 
 # ============================================================
 # OPTIMIZER
 # ============================================================
 
-def solve_allocation(dfc_active, dfl, pref):
+def solve_allocation(dfc, dfl, pref):
     if pl is None:
-        st.error("PuLP belum install. Sila run: pip install pulp")
+        st.error("PuLP belum install. Sila install: pip install pulp")
         st.stop()
 
-    classes = dfc_active["kelas_id"].tolist()
+    classes = dfc["kelas_id"].tolist()
     lecturers = dfl["nama"].tolist()
-    subjects = sorted(dfc_active["kod_kursus"].unique())
+    subjects = sorted(dfc["kod_kursus"].unique().tolist())
 
-    credit = dfc_active.set_index("kelas_id")["jam_kredit"].astype(int).to_dict()
-    cls_subject = dfc_active.set_index("kelas_id")["kod_kursus"].to_dict()
+    credit = dfc.set_index("kelas_id")["jam_kredit"].astype(int).to_dict()
+    cls_subject = dfc.set_index("kelas_id")["kod_kursus"].to_dict()
 
     min_k = dfl.set_index("nama")["effective_min_kredit"].astype(int).to_dict()
     max_k = dfl.set_index("nama")["effective_max_kredit"].astype(int).to_dict()
     active = dfl.set_index("nama")["active"].to_dict()
 
-    class_rows = dfc_active.set_index("kelas_id")
+    class_rows = dfc.set_index("kelas_id")
     lect_rows = dfl.set_index("nama")
 
     prob = pl.LpProblem("ILASO", pl.LpMinimize)
 
     x = pl.LpVariable.dicts("x", (classes, lecturers), 0, 1, cat="Binary")
     y = pl.LpVariable.dicts("y", (lecturers, subjects), 0, 1, cat="Binary")
+
     under_min = pl.LpVariable.dicts("under_min", lecturers, lowBound=0)
     over_target = pl.LpVariable.dicts("over_target", lecturers, lowBound=0)
     under_target = pl.LpVariable.dicts("under_target", lecturers, lowBound=0)
@@ -370,33 +502,35 @@ def solve_allocation(dfc_active, dfl, pref):
 
     for c in classes:
         for l in lecturers:
-            if not is_available(lect_rows.loc[l], class_rows.loc[c]):
+            if not is_available_for_class(lect_rows.loc[l], class_rows.loc[c]):
                 prob += x[c][l] == 0
 
     for l in lecturers:
-        load = pl.lpSum(credit[c] * x[c][l] for c in classes)
-        prob += load <= max_k[l]
+        total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
+        prob += total_load <= max_k[l]
 
     for c in classes:
         s = cls_subject[c]
+
         for l in lecturers:
             prob += x[c][l] <= y[l][s]
 
     for l in lecturers:
-        prob += pl.lpSum(y[l][s] for s in subjects) <= int(max_subjects)
+        prob += pl.lpSum(y[l][s] for s in subjects) <= MAX_SUBJECTS
 
     for l in lecturers:
         for s in subjects:
-            sc = [c for c in classes if cls_subject[c] == s]
-            prob += pl.lpSum(x[c][l] for c in sc) <= int(max_classes_same_subject)
+            subject_classes = [c for c in classes if cls_subject[c] == s]
+            prob += pl.lpSum(x[c][l] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT
 
     for l in lecturers:
-        load = pl.lpSum(credit[c] * x[c][l] for c in classes)
+        total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
+
         if active[l]:
-            eff_target = min(int(target_credit), max_k[l])
-            prob += load + under_min[l] >= min_k[l]
-            prob += load - eff_target <= over_target[l]
-            prob += eff_target - load <= under_target[l]
+            effective_target = min(TARGET_CREDIT, max_k[l])
+            prob += total_load + under_min[l] >= min_k[l]
+            prob += total_load - effective_target <= over_target[l]
+            prob += effective_target - total_load <= under_target[l]
         else:
             prob += under_min[l] == 0
             prob += over_target[l] == 0
@@ -404,30 +538,39 @@ def solve_allocation(dfc_active, dfl, pref):
 
     preference_reward = pl.lpSum(
         credit[c] * get_pref_score(l, cls_subject[c], pref) * x[c][l]
-        for c in classes for l in lecturers
+        for c in classes
+        for l in lecturers
     )
 
-    under_penalty = pl.lpSum(under_min[l] for l in lecturers if active[l])
+    under_penalty = pl.lpSum(
+        under_min[l]
+        for l in lecturers
+        if active[l]
+    )
+
     balance_penalty = pl.lpSum(
         under_target[l] + over_target[l]
-        for l in lecturers if active[l]
+        for l in lecturers
+        if active[l]
     )
 
     prob += (
-        w_under * under_penalty
-        + w_balance * balance_penalty
-        - w_pref * preference_reward
+        W_UNDER * under_penalty
+        + W_BALANCE * balance_penalty
+        - W_PREF * preference_reward
     )
 
-    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=180)
+    solver = pl.PULP_CBC_CMD(msg=False, timeLimit=240)
     prob.solve(solver)
 
     status = pl.LpStatus[prob.status]
 
     assigned = {}
+
     for c in classes:
         for l in lecturers:
             val = float(pl.value(x[c][l]) or 0)
+
             if val > 0.5:
                 assigned[c] = l
 
@@ -435,12 +578,12 @@ def solve_allocation(dfc_active, dfl, pref):
 
 
 # ============================================================
-# OUTPUT ANALYTICS
+# OUTPUT BUILDER
 # ============================================================
 
 def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
-    rows = []
     lect_lookup = dfl.set_index("nama")
+    rows = []
 
     for _, r in dfc_active.iterrows():
         cid = r["kelas_id"]
@@ -449,8 +592,8 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
         if lname == "":
             continue
 
-        lrow = lect_lookup.loc[lname]
         subj = r["kod_kursus"]
+        lrow = lect_lookup.loc[lname]
         asal = str(r.get("pensyarah_asal", "")).strip()
 
         rows.append({
@@ -459,15 +602,16 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
             "kelas_baru": r["kelas_baru"],
             "status_kelas": r["status_kelas"],
             "jam_kredit": int(r["jam_kredit"]),
-            "saiz_kelas": r.get("saiz_kelas", ""),
+            "saiz_kelas": int(r.get("saiz_kelas", 0)),
             "pensyarah": lname,
             "peranan": lrow["peranan"],
             "padanan_pilihan": get_pref_label(lname, subj, dfl),
             "skor_pilihan": get_pref_score(lname, subj, pref),
             "pensyarah_asal": asal,
             "berubah_dari_asal": "YA" if asal and asal != lname else "TIDAK",
-            "minggu_mula_kelas": r["minggu_mula_kelas"],
-            "minggu_akhir_kelas": r["minggu_akhir_kelas"],
+            "minggu_mula_kelas": int(r["minggu_mula_kelas"]),
+            "minggu_akhir_kelas": int(r["minggu_akhir_kelas"]),
+            "perincian": r.get("perincian", "")
         })
 
     df_assign = pd.DataFrame(rows)
@@ -475,157 +619,198 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
     if not df_assign.empty:
         df_assign = df_assign.sort_values(["pensyarah", "kod_kursus", "kelas_baru"])
 
-    summary = []
+    summary_rows = []
 
     for _, lrow in dfl.iterrows():
         lname = lrow["nama"]
-        tmp = df_assign[df_assign["pensyarah"] == lname] if not df_assign.empty else pd.DataFrame()
+
+        if df_assign.empty:
+            tmp = pd.DataFrame()
+        else:
+            tmp = df_assign[df_assign["pensyarah"] == lname]
 
         total_credit = int(tmp["jam_kredit"].sum()) if not tmp.empty else 0
-        subjects = sorted(tmp["kod_kursus"].unique()) if not tmp.empty else []
+        total_class = int(len(tmp)) if not tmp.empty else 0
+        subjects = sorted(tmp["kod_kursus"].unique().tolist()) if not tmp.empty else []
 
-        detail_subjek = []
+        detail_list = []
+
         if not tmp.empty:
-            for s, g in tmp.groupby("kod_kursus"):
-                detail_subjek.append(
-                    f"{s}: {int(g['jam_kredit'].sum())} kredit ({', '.join(g['kelas_baru'].astype(str))})"
-                )
+            for subj, g in tmp.groupby("kod_kursus"):
+                cls = ", ".join(g["kelas_baru"].astype(str).tolist())
+                cr = int(g["jam_kredit"].sum())
+                detail_list.append(f"{subj}: {cr} kredit ({cls})")
 
-        summary.append({
+        active = bool(lrow["active"])
+        min_eff = int(lrow["effective_min_kredit"])
+        max_eff = int(lrow["effective_max_kredit"])
+
+        if not active:
+            load_status = "TIDAK AKTIF / CUTI"
+        elif total_credit < min_eff:
+            load_status = "UNDERLOAD"
+        elif total_credit > max_eff:
+            load_status = "OVERLOAD"
+        else:
+            load_status = "OK"
+
+        summary_rows.append({
             "pensyarah": lname,
             "peranan": lrow["peranan"],
             "status_pensyarah": lrow["status"],
-            "aktif": bool(lrow["active"]),
-            "min_efektif": int(lrow["effective_min_kredit"]),
-            "max_efektif": int(lrow["effective_max_kredit"]),
+            "aktif": active,
+            "minimum_kredit": int(lrow["min_kredit"]),
+            "maksimum_kredit": int(lrow["max_kredit"]),
+            "minimum_efektif": min_eff,
+            "maksimum_efektif": max_eff,
             "jumlah_jam_mengajar": total_credit,
-            "jumlah_kelas": len(tmp),
+            "jumlah_kelas": total_class,
             "bil_subjek": len(subjects),
             "senarai_subjek": ", ".join(subjects),
-            "perincian_mengajar": " | ".join(detail_subjek),
-            "status_load": (
-                "CUTI / TIDAK AKTIF" if not bool(lrow["active"]) else
-                "UNDERLOAD" if total_credit < int(lrow["effective_min_kredit"]) else
-                "OVERLOAD" if total_credit > int(lrow["effective_max_kredit"]) else
-                "OK"
-            )
+            "perincian_mengajar": " | ".join(detail_list),
+            "kurang_minimum": max(min_eff - total_credit, 0) if active else 0,
+            "lebihan_maksimum": max(total_credit - max_eff, 0) if active else 0,
+            "status_load": load_status
         })
 
-    df_summary = pd.DataFrame(summary)
+    df_summary = pd.DataFrame(summary_rows)
 
-    combined_rows = []
+    combined_subject_rows = []
 
     if not df_assign.empty:
         for subj, g in df_assign.groupby("kod_kursus"):
-            lecturers = sorted(g["pensyarah"].unique())
-            combined_rows.append({
+            lecturers = sorted(g["pensyarah"].unique().tolist())
+
+            combined_subject_rows.append({
                 "kod_kursus": subj,
                 "bil_pensyarah": len(lecturers),
                 "pensyarah_terlibat": ", ".join(lecturers),
-                "status_combined": "Combined Teaching" if len(lecturers) > 1 else "Single Lecturer"
+                "status_combined": "COMBINED" if len(lecturers) > 1 else "SINGLE"
             })
 
-    df_combined_subject = pd.DataFrame(combined_rows)
+    df_combined_subject = pd.DataFrame(combined_subject_rows)
 
-    lecturer_combined = []
+    combined_lect_rows = []
 
-    if not df_assign.empty and not df_combined_subject.empty:
+    if not df_combined_subject.empty:
         for lname in dfl["nama"]:
             related = []
 
             for _, row in df_combined_subject.iterrows():
                 lecturers = [x.strip() for x in row["pensyarah_terlibat"].split(",")]
+
                 if lname in lecturers and len(lecturers) > 1:
                     others = [x for x in lecturers if x != lname]
                     related.append(f"{row['kod_kursus']} dengan {', '.join(others)}")
 
-            lecturer_combined.append({
+            combined_lect_rows.append({
                 "pensyarah": lname,
                 "combined_dengan": " | ".join(related) if related else "Tiada"
             })
 
-    df_lecturer_combined = pd.DataFrame(lecturer_combined)
+    df_combined_lect = pd.DataFrame(combined_lect_rows)
 
-    if not df_summary.empty and not df_lecturer_combined.empty:
-        df_summary = df_summary.merge(df_lecturer_combined, on="pensyarah", how="left")
+    if not df_summary.empty and not df_combined_lect.empty:
+        df_summary = df_summary.merge(df_combined_lect, on="pensyarah", how="left")
 
     assigned_ids = set(df_assign["kelas_id"]) if not df_assign.empty else set()
     df_unassigned = dfc_active[~dfc_active["kelas_id"].isin(assigned_ids)].copy()
 
-    status = pd.DataFrame([{
+    preference_rate = 0
+
+    if not df_assign.empty:
+        preference_rate = round(
+            df_assign["padanan_pilihan"].str.startswith("Pilihan").mean() * 100,
+            1
+        )
+
+    df_status = pd.DataFrame([{
         "jumlah_kelas_aktif": len(dfc_active),
         "jumlah_kelas_tutup": len(df_closed),
         "kelas_diagih": len(df_assign),
         "kelas_tidak_diagih": len(df_unassigned),
         "jumlah_kredit_aktif": int(dfc_active["jam_kredit"].sum()),
         "kredit_diagih": int(df_assign["jam_kredit"].sum()) if not df_assign.empty else 0,
+        "jumlah_pensyarah": len(dfl),
         "pensyarah_aktif": int(dfl["active"].sum()),
         "pensyarah_underload": int((df_summary["status_load"] == "UNDERLOAD").sum()),
         "pensyarah_overload": int((df_summary["status_load"] == "OVERLOAD").sum()),
+        "preference_rate_%": preference_rate
     }])
 
-    return df_assign, df_summary, df_combined_subject, df_unassigned, status
-
-
-def to_excel_bytes(dfs):
-    with io.BytesIO() as buffer:
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            for name, df in dfs.items():
-                df.to_excel(writer, index=False, sheet_name=name[:31])
-        return buffer.getvalue()
+    return df_assign, df_summary, df_combined_subject, df_unassigned, df_status
 
 
 # ============================================================
-# UPLOAD
+# FILE UPLOAD
 # ============================================================
 
 st.markdown('<div class="section-title">1. Upload Main Files</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-note">Sistem guna maklumat minimum dan maksimum kredit terus daripada fail pensyarah. Tiada parameter manual.</div>',
+    unsafe_allow_html=True
+)
 
-c1, c2 = st.columns(2)
+u1, u2 = st.columns(2)
 
-with c1:
+with u1:
     file_classes = st.file_uploader(
-        "Upload main file Jadual Kelas",
+        "Upload Jadual Kelas",
         type=["xlsx", "csv"]
     )
 
-with c2:
+with u2:
     file_lect = st.file_uploader(
-        "Upload file Pensyarah",
+        "Upload Pensyarah",
         type=["xlsx", "csv"]
     )
 
 
 # ============================================================
-# MAIN APP
+# MAIN
 # ============================================================
 
-if file_classes is not None and file_lect is not None:
+if file_classes is None or file_lect is None:
+    st.info("Upload dua fail: Jadual Kelas dan Pensyarah.")
+    st.markdown(
+        """
+        <div class="soft-card">
+        <b>Format wajib Jadual Kelas</b><br>
+        kod_kursus, kelas_baru, jam_kredit<br><br>
+        <b>Format wajib Pensyarah</b><br>
+        Nama Pensyarah, Peranan, Minimum Jam Kredit, Maksimum Jam Kredit, Pilihan 1 hingga Pilihan 5
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    if "class_df_loaded_name" not in st.session_state:
-        st.session_state.class_df_loaded_name = ""
+else:
+    if "loaded_class_file" not in st.session_state:
+        st.session_state.loaded_class_file = ""
 
-    if st.session_state.class_df_loaded_name != file_classes.name:
+    if "class_df" not in st.session_state or st.session_state.loaded_class_file != file_classes.name:
         st.session_state.class_df = prepare_class_data(file_classes)
-        st.session_state.class_df_loaded_name = file_classes.name
+        st.session_state.loaded_class_file = file_classes.name
 
     dfl = prepare_lecturer_data(file_lect)
 
-    st.markdown('<div class="section-title">2. Class Manager: Tambah / Tutup Subjek Terus Dalam Sistem</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">2. Class Manager</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Tambah kelas baru atau tutup kelas/subjek terus dalam sistem. Kelas TUTUP tidak masuk allocation.</div>',
+        unsafe_allow_html=True
+    )
 
-    tabs_manager = st.tabs([
-        "📋 Edit Status Kelas",
-        "➕ Tambah Subjek / Kelas Baru",
-        "🗑️ Tutup Subjek / Kelas"
+    manager_tabs = st.tabs([
+        "📋 Edit Jadual Kelas",
+        "➕ Tambah Kelas Baru",
+        "🗑️ Tutup Kelas / Subjek"
     ])
 
-    with tabs_manager[0]:
-        st.info("Edit `status_kelas` kepada BUKA / BARU / TUTUP. Kelas TUTUP tidak akan masuk allocation.")
-
-        edited_df = st.data_editor(
+    with manager_tabs[0]:
+        edited = st.data_editor(
             st.session_state.class_df,
             use_container_width=True,
-            height=420,
+            height=430,
             num_rows="dynamic",
             column_config={
                 "status_kelas": st.column_config.SelectboxColumn(
@@ -633,40 +818,38 @@ if file_classes is not None and file_lect is not None:
                     options=["BUKA", "BARU", "TUTUP"],
                     required=True
                 )
-            },
-            key="class_editor"
+            }
         )
 
-        if st.button("💾 Simpan Perubahan Class Manager", use_container_width=True):
-            edited_df["kod_kursus"] = edited_df["kod_kursus"].map(clean_text)
-            edited_df["kelas_baru"] = edited_df["kelas_baru"].astype(str).str.strip()
-            edited_df["status_kelas"] = edited_df["status_kelas"].map(standardize_status)
-            edited_df["jam_kredit"] = pd.to_numeric(edited_df["jam_kredit"], errors="coerce").fillna(0).astype(int)
-            edited_df["kelas_id"] = edited_df["kod_kursus"] + "-" + edited_df["kelas_baru"].astype(str)
-            edited_df = edited_df.drop_duplicates(subset=["kelas_id"], keep="last").copy()
-            st.session_state.class_df = edited_df
-            st.success("Perubahan disimpan.")
+        if st.button("💾 Simpan Perubahan Jadual Kelas", use_container_width=True):
+            edited = edited.copy()
+            edited["kod_kursus"] = edited["kod_kursus"].map(clean_text)
+            edited["kelas_baru"] = edited["kelas_baru"].astype(str).str.strip()
+            edited["status_kelas"] = edited["status_kelas"].map(standardize_status)
+            edited["jam_kredit"] = pd.to_numeric(edited["jam_kredit"], errors="coerce").fillna(0).astype(int)
+            edited["kelas_id"] = edited["kod_kursus"] + "-" + edited["kelas_baru"].astype(str)
+            edited = edited.drop_duplicates(subset=["kelas_id"], keep="last").copy()
+            st.session_state.class_df = edited
+            st.success("Perubahan jadual kelas disimpan.")
 
-    with tabs_manager[1]:
-        st.subheader("Tambah Subjek / Kelas Baru")
+    with manager_tabs[1]:
+        c1, c2, c3 = st.columns(3)
 
-        a1, a2, a3 = st.columns(3)
-
-        with a1:
+        with c1:
             new_subject = st.text_input("Kod kursus", placeholder="Contoh: MAT421")
             new_class = st.text_input("Kelas baru", placeholder="Contoh: CS2404A")
 
-        with a2:
+        with c2:
             new_credit = st.number_input("Jam kredit", 1, 10, 3, 1)
             new_size = st.number_input("Saiz kelas", 0, 500, 0, 1)
 
-        with a3:
-            new_start = st.number_input("Minggu mula kelas", 1, semester_weeks, 1, 1)
-            new_end = st.number_input("Minggu akhir kelas", 1, semester_weeks, semester_weeks, 1)
+        with c3:
+            new_start = st.number_input("Minggu mula", 1, SEMESTER_WEEKS, 1, 1)
+            new_end = st.number_input("Minggu akhir", 1, SEMESTER_WEEKS, SEMESTER_WEEKS, 1)
 
-        new_detail = st.text_input("Catatan / Perincian", placeholder="Contoh: kelas tambahan dibuka minggu ke-4")
+        new_note = st.text_input("Catatan", placeholder="Contoh: kelas tambahan dibuka minggu ke-4")
 
-        if st.button("➕ Tambah Ke Main File Dalam Sistem", use_container_width=True):
+        if st.button("➕ Tambah Kelas Baru", use_container_width=True):
             if clean_text(new_subject) == "" or new_class.strip() == "":
                 st.error("Kod kursus dan kelas baru wajib diisi.")
             else:
@@ -678,7 +861,7 @@ if file_classes is not None and file_lect is not None:
                     "jam_kredit": int(new_credit),
                     "saiz_kelas": int(new_size),
                     "campuran_group": "",
-                    "perincian": new_detail,
+                    "perincian": new_note,
                     "kredit_info": "",
                     "pensyarah_asal": "",
                     "lock_agihan": "TIDAK",
@@ -686,30 +869,27 @@ if file_classes is not None and file_lect is not None:
                     "minggu_akhir_kelas": int(new_end)
                 }
 
-                temp = pd.concat(
+                updated = pd.concat(
                     [st.session_state.class_df, pd.DataFrame([new_row])],
                     ignore_index=True
                 )
 
-                temp["kelas_id"] = temp["kod_kursus"].map(clean_text) + "-" + temp["kelas_baru"].astype(str).str.strip()
-                temp = temp.drop_duplicates(subset=["kelas_id"], keep="last").copy()
+                updated["kelas_id"] = updated["kod_kursus"].map(clean_text) + "-" + updated["kelas_baru"].astype(str).str.strip()
+                updated = updated.drop_duplicates(subset=["kelas_id"], keep="last").copy()
 
-                st.session_state.class_df = temp
-                st.success(f"Kelas {new_row['kelas_id']} berjaya ditambah sebagai BARU.")
+                st.session_state.class_df = updated
+                st.success(f"Kelas {new_row['kelas_id']} berjaya ditambah.")
 
-    with tabs_manager[2]:
-        st.subheader("Tutup Subjek / Kelas")
-
-        all_subjects = sorted(st.session_state.class_df["kod_kursus"].dropna().unique())
+    with manager_tabs[2]:
         close_mode = st.radio(
-            "Pilih cara tutup",
-            ["Tutup satu kelas sahaja", "Tutup semua kelas untuk satu subjek"],
+            "Pilihan tutup",
+            ["Tutup satu kelas", "Tutup semua kelas bagi satu subjek"],
             horizontal=True
         )
 
-        if close_mode == "Tutup satu kelas sahaja":
-            all_class_ids = sorted(st.session_state.class_df["kelas_id"].dropna().unique())
-            selected_class = st.selectbox("Pilih kelas_id untuk ditutup", all_class_ids)
+        if close_mode == "Tutup satu kelas":
+            class_ids = sorted(st.session_state.class_df["kelas_id"].dropna().unique().tolist())
+            selected_class = st.selectbox("Pilih kelas", class_ids)
 
             if st.button("🗑️ Tutup Kelas Ini", use_container_width=True):
                 st.session_state.class_df.loc[
@@ -719,7 +899,8 @@ if file_classes is not None and file_lect is not None:
                 st.success(f"{selected_class} telah ditutup.")
 
         else:
-            selected_subject = st.selectbox("Pilih kod kursus untuk tutup semua kelas", all_subjects)
+            subjects = sorted(st.session_state.class_df["kod_kursus"].dropna().unique().tolist())
+            selected_subject = st.selectbox("Pilih subjek", subjects)
 
             if st.button("🗑️ Tutup Semua Kelas Subjek Ini", use_container_width=True):
                 st.session_state.class_df.loc[
@@ -734,66 +915,79 @@ if file_classes is not None and file_lect is not None:
     df_active = df_all[df_all["status_kelas"].isin(["BUKA", "BARU"])].copy()
     df_closed = df_all[df_all["status_kelas"] == "TUTUP"].copy()
 
-    st.markdown('<div class="section-title">3. Data Readiness</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">3. Data Overview</div>', unsafe_allow_html=True)
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    k1, k2, k3, k4, k5 = st.columns(5)
 
-    with m1:
+    with k1:
         metric_card("Kelas Aktif", len(df_active), "BUKA + BARU")
-    with m2:
-        metric_card("Kelas Tutup", len(df_closed), "Tidak masuk allocation")
-    with m3:
-        metric_card("Jumlah Kredit", int(df_active["jam_kredit"].sum()), "Kelas aktif sahaja")
-    with m4:
+
+    with k2:
+        metric_card("Kelas Tutup", len(df_closed), "Tidak diagih")
+
+    with k3:
+        metric_card("Kredit Aktif", int(df_active["jam_kredit"].sum()), "Jumlah perlu cover")
+
+    with k4:
         metric_card("Pensyarah Aktif", int(dfl["active"].sum()), "Boleh mengajar")
-    with m5:
-        metric_card("Kapasiti", int(dfl["effective_max_kredit"].sum()), "Max kredit efektif")
+
+    with k5:
+        metric_card("Kapasiti Kredit", int(dfl["effective_max_kredit"].sum()), "Daripada fail pensyarah")
 
     if int(dfl["effective_max_kredit"].sum()) < int(df_active["jam_kredit"].sum()):
-        st.error("Kapasiti pensyarah tidak cukup untuk cover semua kelas aktif.")
+        st.error("Kapasiti maksimum pensyarah tidak cukup untuk cover semua kelas aktif.")
 
-    with st.expander("Lihat kelas aktif dan kelas tutup", expanded=False):
-        q1, q2 = st.columns(2)
-        with q1:
-            st.write("Kelas Aktif")
-            st.dataframe(df_active, use_container_width=True, height=300)
-        with q2:
-            st.write("Kelas Tutup")
-            st.dataframe(df_closed, use_container_width=True, height=300)
+    with st.expander("Lihat Data Aktif / Tutup", expanded=False):
+        t1, t2, t3 = st.tabs(["Kelas Aktif", "Kelas Tutup", "Pensyarah"])
 
-    st.markdown('<div class="section-title">4. Run Allocation</div>', unsafe_allow_html=True)
+        with t1:
+            st.dataframe(df_active, use_container_width=True, height=360)
 
-    if st.button("🚀 Run ILASO Allocation", use_container_width=True):
+        with t2:
+            st.dataframe(df_closed, use_container_width=True, height=360)
 
-        pref = preference_score_table(dfl)
+        with t3:
+            st.dataframe(dfl, use_container_width=True, height=360)
 
-        status_solver, assigned = solve_allocation(df_active, dfl, pref)
+    st.markdown('<div class="section-title">4. Run ILASO Allocation</div>', unsafe_allow_html=True)
 
-        if status_solver == "Optimal":
+    if st.button("🚀 Run Allocation", use_container_width=True):
+        pref = build_preference_score(dfl)
+        solver_status, assigned = solve_allocation(df_active, dfl, pref)
+
+        if solver_status == "Optimal":
             st.success("Optimization Status: Optimal")
         else:
-            st.warning(f"Optimization Status: {status_solver}")
+            st.warning(f"Optimization Status: {solver_status}")
 
         df_assign, df_summary, df_combined, df_unassigned, df_status = build_outputs(
-            df_active, df_closed, dfl, pref, assigned
+            df_active,
+            df_closed,
+            dfl,
+            pref,
+            assigned
         )
 
         s = df_status.iloc[0]
 
         st.markdown('<div class="section-title">5. Executive Dashboard</div>', unsafe_allow_html=True)
 
-        k1, k2, k3, k4, k5 = st.columns(5)
+        d1, d2, d3, d4, d5 = st.columns(5)
 
-        with k1:
-            metric_card("Coverage", f"{s['kelas_diagih']}/{s['jumlah_kelas_aktif']}", "Kelas berjaya diagih")
-        with k2:
+        with d1:
+            metric_card("Coverage", f"{s['kelas_diagih']}/{s['jumlah_kelas_aktif']}", "Kelas diagih")
+
+        with d2:
+            metric_card("Preference", f"{s['preference_rate_%']}%", "Ikut pilihan")
+
+        with d3:
+            metric_card("Underload", int(s["pensyarah_underload"]), "Kurang minimum")
+
+        with d4:
+            metric_card("Overload", int(s["pensyarah_overload"]), "Lebih maksimum")
+
+        with d5:
             metric_card("Closed", int(s["jumlah_kelas_tutup"]), "Kelas ditutup")
-        with k3:
-            metric_card("Underload", int(s["pensyarah_underload"]), "Pensyarah kurang jam")
-        with k4:
-            metric_card("Overload", int(s["pensyarah_overload"]), "Pensyarah lebih jam")
-        with k5:
-            metric_card("Kredit", int(s["kredit_diagih"]), "Jumlah kredit diagih")
 
         result_tabs = st.tabs([
             "📌 Allocation",
@@ -805,27 +999,36 @@ if file_classes is not None and file_lect is not None:
         ])
 
         with result_tabs[0]:
-            st.subheader("Agihan Kelas")
-            st.dataframe(df_assign, use_container_width=True, height=500)
+            st.markdown("### Agihan Kelas")
+            st.dataframe(df_assign, use_container_width=True, height=520)
 
         with result_tabs[1]:
-            st.subheader("Analisis Pensyarah")
-            st.dataframe(df_summary, use_container_width=True, height=520)
+            st.markdown("### Analisis Pensyarah")
+            st.dataframe(df_summary, use_container_width=True, height=540)
 
         with result_tabs[2]:
-            st.subheader("Combined Teaching by Subject")
-            st.dataframe(df_combined, use_container_width=True, height=350)
+            st.markdown("### Combined Teaching by Subject")
+            st.dataframe(df_combined, use_container_width=True, height=340)
 
-            st.subheader("Combined Teaching by Lecturer")
+            st.markdown("### Combined Teaching by Lecturer")
+
             if "combined_dengan" in df_summary.columns:
                 st.dataframe(
-                    df_summary[["pensyarah", "jumlah_jam_mengajar", "senarai_subjek", "combined_dengan"]],
+                    df_summary[
+                        [
+                            "pensyarah",
+                            "jumlah_jam_mengajar",
+                            "senarai_subjek",
+                            "combined_dengan",
+                            "status_load"
+                        ]
+                    ],
                     use_container_width=True,
                     height=420
                 )
 
         with result_tabs[3]:
-            st.subheader("Analytics")
+            st.markdown("### Workload Distribution")
 
             if px is not None and not df_summary.empty:
                 fig = px.bar(
@@ -833,10 +1036,16 @@ if file_classes is not None and file_lect is not None:
                     x="jumlah_jam_mengajar",
                     y="pensyarah",
                     orientation="h",
+                    text="jumlah_jam_mengajar",
                     title="Jumlah Jam Mengajar Mengikut Pensyarah"
                 )
-                fig.update_layout(height=650)
+                fig.update_layout(height=680)
                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.dataframe(
+                    df_summary[["pensyarah", "jumlah_jam_mengajar"]],
+                    use_container_width=True
+                )
 
             if px is not None and not df_assign.empty:
                 pref_count = df_assign["padanan_pilihan"].value_counts().reset_index()
@@ -846,13 +1055,13 @@ if file_classes is not None and file_lect is not None:
                     pref_count,
                     names="padanan_pilihan",
                     values="count",
-                    title="Preference Satisfaction",
-                    hole=0.45
+                    hole=0.45,
+                    title="Preference Satisfaction"
                 )
                 st.plotly_chart(fig2, use_container_width=True)
 
         with result_tabs[4]:
-            st.subheader("Audit")
+            st.markdown("### Audit Semakan")
 
             if df_unassigned.empty:
                 st.success("Semua kelas aktif berjaya diagih.")
@@ -871,8 +1080,8 @@ if file_classes is not None and file_lect is not None:
                 st.error("Pensyarah overload.")
                 st.dataframe(over, use_container_width=True)
 
-            st.subheader("Kelas Ditutup")
-            st.dataframe(df_closed, use_container_width=True, height=260)
+            st.markdown("### Kelas Ditutup")
+            st.dataframe(df_closed, use_container_width=True, height=300)
 
         with result_tabs[5]:
             output = to_excel_bytes({
@@ -886,9 +1095,9 @@ if file_classes is not None and file_lect is not None:
             })
 
             st.download_button(
-                "📥 Download Result Excel",
+                "📥 Download Full Result Excel",
                 data=output,
-                file_name="ILASO_result_with_class_manager.xlsx",
+                file_name="ILASO_result.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -900,13 +1109,16 @@ if file_classes is not None and file_lect is not None:
             st.download_button(
                 "📥 Download Updated Main File",
                 data=updated_main,
-                file_name="Jadual_Kelas_Updated_ILASO.xlsx",
+                file_name="Jadual_Kelas_Updated.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
 
-else:
-    st.info("Upload dua fail: main file Jadual Kelas dan file Pensyarah.")
-
-st.divider()
-st.caption("ILASO handles lecturer-class allocation, class closure, added subject/classes, workload analytics and combined teaching analysis.")
+st.markdown(
+    """
+    <div class="footer">
+        ILASO uses fixed semester weeks = 14 and lecturer workload limits directly from the uploaded lecturer file.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
