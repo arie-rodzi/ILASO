@@ -48,6 +48,104 @@ W_SHARE = 20000
 # ============================================================
 
 st.set_page_config(
+    st.markdown("""
+<style>
+
+.main {
+    background-color: #F8FAFC;
+}
+
+.block-container {
+    padding-top: 1.2rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+}
+
+[data-testid="stSidebar"] {
+    background: #FFFFFF;
+    border-right: 1px solid #E5E7EB;
+}
+
+.ilaso-hero {
+    background: linear-gradient(135deg, #061A40 0%, #0B3678 60%, #123C7C 100%);
+    padding: 34px 42px;
+    border-radius: 0 0 28px 28px;
+    color: white;
+    margin-bottom: 30px;
+    box-shadow: 0 18px 45px rgba(6, 26, 64, 0.18);
+}
+
+.ilaso-title {
+    font-size: 48px;
+    font-weight: 900;
+}
+
+.ilaso-subtitle {
+    font-size: 20px;
+    color: #E8EEF9;
+    margin-top: 8px;
+}
+
+.ilaso-tag {
+    display: inline-block;
+    margin-top: 18px;
+    background: rgba(245, 197, 66, 0.16);
+    color: #FFE38A;
+    border: 1px solid rgba(248, 214, 109, 0.65);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-weight: 800;
+}
+
+.metric-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    border: 1px solid #E2E8F0;
+}
+
+.metric-label {
+    font-size: 13px;
+    color: #64748B;
+    font-weight: 800;
+}
+
+.metric-value {
+    font-size: 32px;
+    color: #0B3678;
+    font-weight: 900;
+}
+
+.metric-note {
+    color: #64748B;
+    font-size: 12px;
+}
+
+.section-title {
+    color: #0B1F3A;
+    font-size: 26px;
+    font-weight: 900;
+}
+
+.upload-card {
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 22px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.stButton > button {
+    background: linear-gradient(135deg, #2563EB, #1D4ED8);
+    color: white;
+    border-radius: 12px;
+    border: none;
+    font-weight: 900;
+}
+
+</style>
+""", unsafe_allow_html=True)
     page_title="ILASO",
     page_icon="📘",
     layout="wide",
@@ -59,132 +157,23 @@ st.set_page_config(
 # CSS
 # ============================================================
 
-st.markdown(
-    """
-    <style>
-    [data-testid="stSidebar"] {
-        display: none;
-    }
+st.markdown("""
+<div class="ilaso-hero">
 
-    .block-container {
-        padding-top: 1.2rem;
-        padding-left: 2.4rem;
-        padding-right: 2.4rem;
-        max-width: 1450px;
-    }
+<div class="ilaso-title">
+ILASO
+</div>
 
-    .hero {
-        background: linear-gradient(135deg, #071A3D 0%, #0B2F6B 55%, #123C7C 100%);
-        border-radius: 28px;
-        padding: 34px 42px;
-        margin-bottom: 28px;
-        box-shadow: 0 18px 45px rgba(7,26,61,0.20);
-        color: white;
-    }
+<div class="ilaso-subtitle">
+Intelligent Lecturer Allocation System with Correct Shared-Class Detection
+</div>
 
-    .hero-title {
-        font-size: 46px;
-        font-weight: 900;
-        letter-spacing: 1px;
-        margin-bottom: 6px;
-    }
+<div class="ilaso-tag">
+1 class = 1 lecturer by default • Sharing minimized • Late-entry lecturers supported
+</div>
 
-    .hero-subtitle {
-        font-size: 18px;
-        color: #EAF0FF;
-        margin-bottom: 14px;
-    }
-
-    .hero-pill {
-        display: inline-block;
-        background: rgba(255, 217, 102, 0.16);
-        border: 1px solid rgba(255, 217, 102, 0.45);
-        color: #FFE08A;
-        padding: 8px 14px;
-        border-radius: 999px;
-        font-weight: 700;
-        font-size: 13px;
-    }
-
-    .section-title {
-        font-size: 24px;
-        font-weight: 900;
-        color: #071A3D;
-        margin-top: 20px;
-        margin-bottom: 8px;
-    }
-
-    .section-note {
-        color: #667085;
-        font-size: 14px;
-        margin-bottom: 16px;
-    }
-
-    .metric-card {
-        background: white;
-        border: 1px solid #E6EAF2;
-        border-radius: 22px;
-        padding: 20px 22px;
-        box-shadow: 0 10px 28px rgba(16, 39, 80, 0.08);
-        min-height: 122px;
-    }
-
-    .metric-label {
-        font-size: 12px;
-        color: #667085;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-    }
-
-    .metric-value {
-        font-size: 34px;
-        font-weight: 900;
-        color: #071A3D;
-        margin-top: 6px;
-    }
-
-    .metric-note {
-        font-size: 12px;
-        color: #98A2B3;
-        margin-top: 4px;
-    }
-
-    .soft-card {
-        background: white;
-        border: 1px solid #E6EAF2;
-        border-radius: 22px;
-        padding: 22px;
-        box-shadow: 0 10px 28px rgba(16, 39, 80, 0.06);
-        margin-bottom: 16px;
-    }
-
-    div[data-testid="stFileUploader"] {
-        background: white;
-        border: 1px solid #E6EAF2;
-        border-radius: 20px;
-        padding: 18px;
-        box-shadow: 0 8px 22px rgba(16, 39, 80, 0.06);
-    }
-
-    .stButton > button {
-        border-radius: 14px;
-        font-weight: 800;
-        height: 3rem;
-    }
-
-    .footer {
-        color: #98A2B3;
-        font-size: 13px;
-        margin-top: 28px;
-        padding-top: 18px;
-        border-top: 1px solid #E6EAF2;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
+</div>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # HEADER
