@@ -1,6 +1,6 @@
 # ============================================================
 # ILASO PREMIUM CLEAN VERSION
-# Intelligent Lecturer Allocation System
+# Corrected Shared-Class Logic
 # ============================================================
 # pip install streamlit pandas numpy openpyxl pulp plotly
 # streamlit run ilaso_app.py
@@ -22,26 +22,25 @@ except Exception:
     px = None
 
 
+# ============================================================
+# FIXED CONFIG
+# ============================================================
+
 SEMESTER_WEEKS = 14
 DEFAULT_MIN = 15
 DEFAULT_MAX = 18
 TARGET_CREDIT = 15
+
 MAX_SUBJECTS = 2
 MAX_CLASSES_SAME_SUBJECT = 3
 
-SCORE_PREF = {
-    1: 100,
-    2: 80,
-    3: 60,
-    4: 40,
-    5: 20
-}
-
+SCORE_PREF = {1: 100, 2: 80, 3: 60, 4: 40, 5: 20}
 SCORE_NOT_PREF = -30
 
 W_PREF = 80
 W_UNDER = 5000
 W_BALANCE = 2500
+W_SHARE = 20000
 
 
 # ============================================================
@@ -57,7 +56,7 @@ st.set_page_config(
 
 
 # ============================================================
-# PREMIUM CSS
+# CSS
 # ============================================================
 
 st.markdown(
@@ -69,13 +68,9 @@ st.markdown(
 
     .block-container {
         padding-top: 1.2rem;
-        padding-left: 2.5rem;
-        padding-right: 2.5rem;
-        max-width: 1400px;
-    }
-
-    .main-bg {
-        background: #F5F7FB;
+        padding-left: 2.4rem;
+        padding-right: 2.4rem;
+        max-width: 1450px;
     }
 
     .hero {
@@ -116,7 +111,7 @@ st.markdown(
         font-weight: 900;
         color: #071A3D;
         margin-top: 20px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
 
     .section-note {
@@ -200,9 +195,9 @@ st.markdown(
     <div class="hero">
         <div class="hero-title">ILASO</div>
         <div class="hero-subtitle">
-            Intelligent Lecturer Allocation System for Subject Allocation, Closed-Class Handling and Lecturer Workload Analytics
+            Intelligent Lecturer Allocation System with Correct Shared-Class Detection
         </div>
-        <span class="hero-pill">Clean Interface • No Manual Parameters • Uses Lecturer File Settings</span>
+        <span class="hero-pill">1 class = 1 lecturer by default • Sharing minimized • Late-entry lecturers supported</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -239,6 +234,13 @@ def standardize_status(x):
     return x
 
 
+def yes_no(x):
+    x = clean_text(x)
+    if x in ["YA", "YES", "Y", "TRUE", "1"]:
+        return "YA"
+    return "TIDAK"
+
+
 def metric_card(label, value, note=""):
     st.markdown(
         f"""
@@ -266,6 +268,18 @@ def read_file(uploaded_file, expected_sheet=None):
     return pd.read_excel(uploaded_file, sheet_name=xl.sheet_names[0])
 
 
+def to_excel_bytes(dfs):
+    with io.BytesIO() as buffer:
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            for name, df in dfs.items():
+                df.to_excel(writer, index=False, sheet_name=name[:31])
+        return buffer.getvalue()
+
+
+# ============================================================
+# DATA PREPARATION
+# ============================================================
+
 def prepare_class_data(file_classes):
     df = read_file(file_classes, expected_sheet="Jadual_Kelas").copy()
 
@@ -282,17 +296,17 @@ def prepare_class_data(file_classes):
 
     if "status_kelas" not in df.columns:
         df["status_kelas"] = "BUKA"
-
     df["status_kelas"] = df["status_kelas"].map(standardize_status)
 
     if "saiz_kelas" not in df.columns:
         df["saiz_kelas"] = 0
-
     df["saiz_kelas"] = pd.to_numeric(df["saiz_kelas"], errors="coerce").fillna(0).astype(int)
 
     for col in ["campuran_group", "perincian", "kredit_info", "pensyarah_asal", "lock_agihan"]:
         if col not in df.columns:
             df[col] = ""
+
+    df["lock_agihan"] = df["lock_agihan"].map(yes_no)
 
     if "minggu_mula_kelas" not in df.columns:
         df["minggu_mula_kelas"] = 1
@@ -302,6 +316,14 @@ def prepare_class_data(file_classes):
 
     df["minggu_mula_kelas"] = pd.to_numeric(df["minggu_mula_kelas"], errors="coerce").fillna(1).astype(int)
     df["minggu_akhir_kelas"] = pd.to_numeric(df["minggu_akhir_kelas"], errors="coerce").fillna(SEMESTER_WEEKS).astype(int)
+
+    df["minggu_mula_kelas"] = df["minggu_mula_kelas"].clip(1, SEMESTER_WEEKS)
+    df["minggu_akhir_kelas"] = df["minggu_akhir_kelas"].clip(1, SEMESTER_WEEKS)
+
+    if "share_allowed" not in df.columns:
+        df["share_allowed"] = "TIDAK"
+
+    df["share_allowed"] = df["share_allowed"].map(yes_no)
 
     df = df[
         (df["kod_kursus"] != "") &
@@ -325,6 +347,7 @@ def prepare_class_data(file_classes):
         "kredit_info",
         "pensyarah_asal",
         "lock_agihan",
+        "share_allowed",
         "minggu_mula_kelas",
         "minggu_akhir_kelas"
     ]
@@ -385,6 +408,9 @@ def prepare_lecturer_data(file_lect):
     df["minggu_mula_available"] = pd.to_numeric(df["minggu_mula_available"], errors="coerce").fillna(1).astype(int)
     df["minggu_akhir_available"] = pd.to_numeric(df["minggu_akhir_available"], errors="coerce").fillna(SEMESTER_WEEKS).astype(int)
 
+    df["minggu_mula_available"] = df["minggu_mula_available"].clip(1, SEMESTER_WEEKS)
+    df["minggu_akhir_available"] = df["minggu_akhir_available"].clip(1, SEMESTER_WEEKS)
+
     df["available_weeks"] = (
         df["minggu_akhir_available"] - df["minggu_mula_available"] + 1
     ).clip(lower=0, upper=SEMESTER_WEEKS)
@@ -407,6 +433,10 @@ def prepare_lecturer_data(file_lect):
 
     return df
 
+
+# ============================================================
+# PREFERENCE
+# ============================================================
 
 def build_preference_score(dfl):
     pref = {}
@@ -452,12 +482,11 @@ def is_available_for_class(lect_row, class_row):
     )
 
 
-def to_excel_bytes(dfs):
-    with io.BytesIO() as buffer:
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            for name, df in dfs.items():
-                df.to_excel(writer, index=False, sheet_name=name[:31])
-        return buffer.getvalue()
+def can_cover_full_class(lect_row, class_row):
+    return (
+        int(lect_row["minggu_mula_available"]) <= int(class_row["minggu_mula_kelas"])
+        and int(lect_row["minggu_akhir_available"]) >= int(class_row["minggu_akhir_kelas"])
+    )
 
 
 # ============================================================
@@ -465,6 +494,17 @@ def to_excel_bytes(dfs):
 # ============================================================
 
 def solve_allocation(dfc, dfl, pref):
+    """
+    Normal rule:
+    - Each kelas_id is assigned to exactly 1 lecturer.
+
+    Shared class rule:
+    - Sharing is not automatic.
+    - Sharing is allowed only if share_allowed == YA OR no full-cover lecturer exists.
+    - Sharing is penalized heavily.
+    - Share means the same kelas_id has more than one lecturer.
+    """
+
     if pl is None:
         st.error("PuLP belum install. Sila install: pip install pulp")
         st.stop()
@@ -475,6 +515,7 @@ def solve_allocation(dfc, dfl, pref):
 
     credit = dfc.set_index("kelas_id")["jam_kredit"].astype(int).to_dict()
     cls_subject = dfc.set_index("kelas_id")["kod_kursus"].to_dict()
+    share_allowed = dfc.set_index("kelas_id")["share_allowed"].to_dict()
 
     min_k = dfl.set_index("nama")["effective_min_kredit"].astype(int).to_dict()
     max_k = dfl.set_index("nama")["effective_max_kredit"].astype(int).to_dict()
@@ -483,46 +524,99 @@ def solve_allocation(dfc, dfl, pref):
     class_rows = dfc.set_index("kelas_id")
     lect_rows = dfl.set_index("nama")
 
-    prob = pl.LpProblem("ILASO", pl.LpMinimize)
+    full_cover_exists = {}
+
+    for c in classes:
+        crow = class_rows.loc[c]
+        ok = False
+
+        for l in lecturers:
+            if active[l] and can_cover_full_class(lect_rows.loc[l], crow):
+                ok = True
+                break
+
+        full_cover_exists[c] = ok
+
+    prob = pl.LpProblem("ILASO_Correct_Shared_Class", pl.LpMinimize)
 
     x = pl.LpVariable.dicts("x", (classes, lecturers), 0, 1, cat="Binary")
     y = pl.LpVariable.dicts("y", (lecturers, subjects), 0, 1, cat="Binary")
+    share = pl.LpVariable.dicts("share", classes, 0, 1, cat="Binary")
 
     under_min = pl.LpVariable.dicts("under_min", lecturers, lowBound=0)
     over_target = pl.LpVariable.dicts("over_target", lecturers, lowBound=0)
     under_target = pl.LpVariable.dicts("under_target", lecturers, lowBound=0)
 
+    # --------------------------------------------------------
+    # Assignment rule
+    # --------------------------------------------------------
     for c in classes:
-        prob += pl.lpSum(x[c][l] for l in lecturers) == 1
+        if share_allowed[c] == "YA" or not full_cover_exists[c]:
+            # share possible but minimized
+            prob += pl.lpSum(x[c][l] for l in lecturers) >= 1
+            prob += pl.lpSum(x[c][l] for l in lecturers) <= 2
+            prob += pl.lpSum(x[c][l] for l in lecturers) - 1 <= share[c]
+        else:
+            # normal condition: exactly one lecturer
+            prob += pl.lpSum(x[c][l] for l in lecturers) == 1
+            prob += share[c] == 0
 
+    # --------------------------------------------------------
+    # Inactive lecturers cannot teach
+    # --------------------------------------------------------
     for l in lecturers:
         if not active[l]:
             for c in classes:
                 prob += x[c][l] == 0
 
+    # --------------------------------------------------------
+    # Availability
+    # --------------------------------------------------------
     for c in classes:
         for l in lecturers:
             if not is_available_for_class(lect_rows.loc[l], class_rows.loc[c]):
                 prob += x[c][l] == 0
 
+            # If sharing is not required/allowed, lecturer must cover full class
+            if share_allowed[c] != "YA" and full_cover_exists[c]:
+                if not can_cover_full_class(lect_rows.loc[l], class_rows.loc[c]):
+                    prob += x[c][l] == 0
+
+    # --------------------------------------------------------
+    # Workload max
+    # If shared, this simple version gives full credit to each shared lecturer.
+    # This is intentionally conservative to discourage sharing.
+    # --------------------------------------------------------
     for l in lecturers:
         total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
         prob += total_load <= max_k[l]
 
+    # --------------------------------------------------------
+    # Link lecturer-subject
+    # --------------------------------------------------------
     for c in classes:
         s = cls_subject[c]
 
         for l in lecturers:
             prob += x[c][l] <= y[l][s]
 
+    # --------------------------------------------------------
+    # Subject limit
+    # --------------------------------------------------------
     for l in lecturers:
         prob += pl.lpSum(y[l][s] for s in subjects) <= MAX_SUBJECTS
 
+    # --------------------------------------------------------
+    # Max classes of same subject per lecturer
+    # --------------------------------------------------------
     for l in lecturers:
         for s in subjects:
             subject_classes = [c for c in classes if cls_subject[c] == s]
             prob += pl.lpSum(x[c][l] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT
 
+    # --------------------------------------------------------
+    # Minimum and target balance
+    # --------------------------------------------------------
     for l in lecturers:
         total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
 
@@ -554,9 +648,15 @@ def solve_allocation(dfc, dfl, pref):
         if active[l]
     )
 
+    share_penalty = pl.lpSum(
+        share[c]
+        for c in classes
+    )
+
     prob += (
         W_UNDER * under_penalty
         + W_BALANCE * balance_penalty
+        + W_SHARE * share_penalty
         - W_PREF * preference_reward
     )
 
@@ -565,60 +665,101 @@ def solve_allocation(dfc, dfl, pref):
 
     status = pl.LpStatus[prob.status]
 
-    assigned = {}
+    assigned_rows = []
 
     for c in classes:
         for l in lecturers:
             val = float(pl.value(x[c][l]) or 0)
 
             if val > 0.5:
-                assigned[c] = l
+                assigned_rows.append({
+                    "kelas_id": c,
+                    "pensyarah": l,
+                    "is_shared": int(round(float(pl.value(share[c]) or 0)))
+                })
 
-    return status, assigned
+    return status, pd.DataFrame(assigned_rows)
 
 
 # ============================================================
 # OUTPUT BUILDER
 # ============================================================
 
-def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
+def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
     lect_lookup = dfl.set_index("nama")
+    class_lookup = dfc_active.set_index("kelas_id")
+
     rows = []
 
-    for _, r in dfc_active.iterrows():
-        cid = r["kelas_id"]
-        lname = assigned.get(cid, "")
+    if assigned_df.empty:
+        df_assign = pd.DataFrame()
+    else:
+        for _, ar in assigned_df.iterrows():
+            cid = ar["kelas_id"]
+            lname = ar["pensyarah"]
 
-        if lname == "":
-            continue
+            r = class_lookup.loc[cid]
+            subj = r["kod_kursus"]
+            lrow = lect_lookup.loc[lname]
+            asal = str(r.get("pensyarah_asal", "")).strip()
 
-        subj = r["kod_kursus"]
-        lrow = lect_lookup.loc[lname]
-        asal = str(r.get("pensyarah_asal", "")).strip()
+            rows.append({
+                "kelas_id": cid,
+                "kod_kursus": subj,
+                "kelas_baru": r["kelas_baru"],
+                "status_kelas": r["status_kelas"],
+                "jam_kredit": int(r["jam_kredit"]),
+                "saiz_kelas": int(r.get("saiz_kelas", 0)),
+                "pensyarah": lname,
+                "peranan": lrow["peranan"],
+                "padanan_pilihan": get_pref_label(lname, subj, dfl),
+                "skor_pilihan": get_pref_score(lname, subj, pref),
+                "pensyarah_asal": asal,
+                "berubah_dari_asal": "YA" if asal and asal != lname else "TIDAK",
+                "share_allowed": r.get("share_allowed", "TIDAK"),
+                "is_shared": "YA" if int(ar["is_shared"]) == 1 else "TIDAK",
+                "minggu_mula_kelas": int(r["minggu_mula_kelas"]),
+                "minggu_akhir_kelas": int(r["minggu_akhir_kelas"]),
+                "minggu_mula_available": int(lrow["minggu_mula_available"]),
+                "minggu_akhir_available": int(lrow["minggu_akhir_available"]),
+                "perincian": r.get("perincian", "")
+            })
 
-        rows.append({
-            "kelas_id": cid,
-            "kod_kursus": subj,
-            "kelas_baru": r["kelas_baru"],
-            "status_kelas": r["status_kelas"],
-            "jam_kredit": int(r["jam_kredit"]),
-            "saiz_kelas": int(r.get("saiz_kelas", 0)),
-            "pensyarah": lname,
-            "peranan": lrow["peranan"],
-            "padanan_pilihan": get_pref_label(lname, subj, dfl),
-            "skor_pilihan": get_pref_score(lname, subj, pref),
-            "pensyarah_asal": asal,
-            "berubah_dari_asal": "YA" if asal and asal != lname else "TIDAK",
-            "minggu_mula_kelas": int(r["minggu_mula_kelas"]),
-            "minggu_akhir_kelas": int(r["minggu_akhir_kelas"]),
-            "perincian": r.get("perincian", "")
-        })
-
-    df_assign = pd.DataFrame(rows)
+        df_assign = pd.DataFrame(rows)
 
     if not df_assign.empty:
-        df_assign = df_assign.sort_values(["pensyarah", "kod_kursus", "kelas_baru"])
+        df_assign = df_assign.sort_values(["kelas_id", "pensyarah"])
 
+    # --------------------------------------------------------
+    # Correct shared class analysis
+    # Sharing = same kelas_id has more than one lecturer
+    # --------------------------------------------------------
+    if not df_assign.empty:
+        df_shared_class = (
+            df_assign
+            .groupby(["kelas_id", "kod_kursus", "kelas_baru"])
+            .agg(
+                bil_pensyarah=("pensyarah", "nunique"),
+                pensyarah_terlibat=("pensyarah", lambda x: ", ".join(sorted(set(x)))),
+                minggu_kelas=("minggu_mula_kelas", "first")
+            )
+            .reset_index()
+        )
+
+        df_shared_class["status_share"] = np.where(
+            df_shared_class["bil_pensyarah"] > 1,
+            "SHARED CLASS",
+            "SINGLE LECTURER"
+        )
+
+        df_shared_only = df_shared_class[df_shared_class["bil_pensyarah"] > 1].copy()
+    else:
+        df_shared_class = pd.DataFrame()
+        df_shared_only = pd.DataFrame()
+
+    # --------------------------------------------------------
+    # Lecturer summary
+    # --------------------------------------------------------
     summary_rows = []
 
     for _, lrow in dfl.iterrows():
@@ -630,7 +771,7 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
             tmp = df_assign[df_assign["pensyarah"] == lname]
 
         total_credit = int(tmp["jam_kredit"].sum()) if not tmp.empty else 0
-        total_class = int(len(tmp)) if not tmp.empty else 0
+        total_class = int(tmp["kelas_id"].nunique()) if not tmp.empty else 0
         subjects = sorted(tmp["kod_kursus"].unique().tolist()) if not tmp.empty else []
 
         detail_list = []
@@ -640,6 +781,17 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
                 cls = ", ".join(g["kelas_baru"].astype(str).tolist())
                 cr = int(g["jam_kredit"].sum())
                 detail_list.append(f"{subj}: {cr} kredit ({cls})")
+
+        shared_detail = []
+
+        if not df_shared_only.empty:
+            for _, sr in df_shared_only.iterrows():
+                cid = sr["kelas_id"]
+                lecturers = [x.strip() for x in sr["pensyarah_terlibat"].split(",")]
+
+                if lname in lecturers:
+                    others = [x for x in lecturers if x != lname]
+                    shared_detail.append(f"{cid} dengan {', '.join(others)}")
 
         active = bool(lrow["active"])
         min_eff = int(lrow["effective_min_kredit"])
@@ -668,50 +820,13 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
             "bil_subjek": len(subjects),
             "senarai_subjek": ", ".join(subjects),
             "perincian_mengajar": " | ".join(detail_list),
+            "shared_class_dengan": " | ".join(shared_detail) if shared_detail else "Tiada",
             "kurang_minimum": max(min_eff - total_credit, 0) if active else 0,
             "lebihan_maksimum": max(total_credit - max_eff, 0) if active else 0,
             "status_load": load_status
         })
 
     df_summary = pd.DataFrame(summary_rows)
-
-    combined_subject_rows = []
-
-    if not df_assign.empty:
-        for subj, g in df_assign.groupby("kod_kursus"):
-            lecturers = sorted(g["pensyarah"].unique().tolist())
-
-            combined_subject_rows.append({
-                "kod_kursus": subj,
-                "bil_pensyarah": len(lecturers),
-                "pensyarah_terlibat": ", ".join(lecturers),
-                "status_combined": "COMBINED" if len(lecturers) > 1 else "SINGLE"
-            })
-
-    df_combined_subject = pd.DataFrame(combined_subject_rows)
-
-    combined_lect_rows = []
-
-    if not df_combined_subject.empty:
-        for lname in dfl["nama"]:
-            related = []
-
-            for _, row in df_combined_subject.iterrows():
-                lecturers = [x.strip() for x in row["pensyarah_terlibat"].split(",")]
-
-                if lname in lecturers and len(lecturers) > 1:
-                    others = [x for x in lecturers if x != lname]
-                    related.append(f"{row['kod_kursus']} dengan {', '.join(others)}")
-
-            combined_lect_rows.append({
-                "pensyarah": lname,
-                "combined_dengan": " | ".join(related) if related else "Tiada"
-            })
-
-    df_combined_lect = pd.DataFrame(combined_lect_rows)
-
-    if not df_summary.empty and not df_combined_lect.empty:
-        df_summary = df_summary.merge(df_combined_lect, on="pensyarah", how="left")
 
     assigned_ids = set(df_assign["kelas_id"]) if not df_assign.empty else set()
     df_unassigned = dfc_active[~dfc_active["kelas_id"].isin(assigned_ids)].copy()
@@ -727,8 +842,9 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
     df_status = pd.DataFrame([{
         "jumlah_kelas_aktif": len(dfc_active),
         "jumlah_kelas_tutup": len(df_closed),
-        "kelas_diagih": len(df_assign),
+        "kelas_diagih": len(assigned_ids),
         "kelas_tidak_diagih": len(df_unassigned),
+        "jumlah_shared_class": len(df_shared_only),
         "jumlah_kredit_aktif": int(dfc_active["jam_kredit"].sum()),
         "kredit_diagih": int(df_assign["jam_kredit"].sum()) if not df_assign.empty else 0,
         "jumlah_pensyarah": len(dfl),
@@ -738,16 +854,16 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned):
         "preference_rate_%": preference_rate
     }])
 
-    return df_assign, df_summary, df_combined_subject, df_unassigned, df_status
+    return df_assign, df_summary, df_shared_class, df_shared_only, df_unassigned, df_status
 
 
 # ============================================================
-# FILE UPLOAD
+# UPLOAD
 # ============================================================
 
 st.markdown('<div class="section-title">1. Upload Main Files</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Sistem guna maklumat minimum dan maksimum kredit terus daripada fail pensyarah. Tiada parameter manual.</div>',
+    '<div class="section-note">Minimum dan maksimum kredit diambil terus daripada fail pensyarah. Semester fixed 14 minggu.</div>',
     unsafe_allow_html=True
 )
 
@@ -767,16 +883,22 @@ with u2:
 
 
 # ============================================================
-# MAIN
+# MAIN APP
 # ============================================================
 
 if file_classes is None or file_lect is None:
     st.info("Upload dua fail: Jadual Kelas dan Pensyarah.")
+
     st.markdown(
         """
         <div class="soft-card">
         <b>Format wajib Jadual Kelas</b><br>
         kod_kursus, kelas_baru, jam_kredit<br><br>
+
+        <b>Column optional untuk sharing</b><br>
+        share_allowed = YA / TIDAK<br>
+        Jika kosong, sistem anggap TIDAK.<br><br>
+
         <b>Format wajib Pensyarah</b><br>
         Nama Pensyarah, Peranan, Minimum Jam Kredit, Maksimum Jam Kredit, Pilihan 1 hingga Pilihan 5
         </div>
@@ -796,14 +918,15 @@ else:
 
     st.markdown('<div class="section-title">2. Class Manager</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Tambah kelas baru atau tutup kelas/subjek terus dalam sistem. Kelas TUTUP tidak masuk allocation.</div>',
+        '<div class="section-note">Tambah kelas baru, tutup kelas, atau benarkan sharing hanya untuk class tertentu.</div>',
         unsafe_allow_html=True
     )
 
     manager_tabs = st.tabs([
         "📋 Edit Jadual Kelas",
         "➕ Tambah Kelas Baru",
-        "🗑️ Tutup Kelas / Subjek"
+        "🗑️ Tutup Kelas / Subjek",
+        "🤝 Share Permission"
     ])
 
     with manager_tabs[0]:
@@ -817,6 +940,11 @@ else:
                     "status_kelas",
                     options=["BUKA", "BARU", "TUTUP"],
                     required=True
+                ),
+                "share_allowed": st.column_config.SelectboxColumn(
+                    "share_allowed",
+                    options=["TIDAK", "YA"],
+                    required=True
                 )
             }
         )
@@ -826,6 +954,7 @@ else:
             edited["kod_kursus"] = edited["kod_kursus"].map(clean_text)
             edited["kelas_baru"] = edited["kelas_baru"].astype(str).str.strip()
             edited["status_kelas"] = edited["status_kelas"].map(standardize_status)
+            edited["share_allowed"] = edited["share_allowed"].map(yes_no)
             edited["jam_kredit"] = pd.to_numeric(edited["jam_kredit"], errors="coerce").fillna(0).astype(int)
             edited["kelas_id"] = edited["kod_kursus"] + "-" + edited["kelas_baru"].astype(str)
             edited = edited.drop_duplicates(subset=["kelas_id"], keep="last").copy()
@@ -836,8 +965,8 @@ else:
         c1, c2, c3 = st.columns(3)
 
         with c1:
-            new_subject = st.text_input("Kod kursus", placeholder="Contoh: MAT421")
-            new_class = st.text_input("Kelas baru", placeholder="Contoh: CS2404A")
+            new_subject = st.text_input("Kod kursus", placeholder="Contoh: MAT112")
+            new_class = st.text_input("Group / kelas", placeholder="Contoh: A1")
 
         with c2:
             new_credit = st.number_input("Jam kredit", 1, 10, 3, 1)
@@ -847,11 +976,12 @@ else:
             new_start = st.number_input("Minggu mula", 1, SEMESTER_WEEKS, 1, 1)
             new_end = st.number_input("Minggu akhir", 1, SEMESTER_WEEKS, SEMESTER_WEEKS, 1)
 
-        new_note = st.text_input("Catatan", placeholder="Contoh: kelas tambahan dibuka minggu ke-4")
+        new_share = st.selectbox("Benarkan sharing untuk kelas ini?", ["TIDAK", "YA"])
+        new_note = st.text_input("Catatan", placeholder="Contoh: kelas tambahan / pensyarah masuk lambat")
 
         if st.button("➕ Tambah Kelas Baru", use_container_width=True):
             if clean_text(new_subject) == "" or new_class.strip() == "":
-                st.error("Kod kursus dan kelas baru wajib diisi.")
+                st.error("Kod kursus dan group/kelas wajib diisi.")
             else:
                 new_row = {
                     "kelas_id": clean_text(new_subject) + "-" + new_class.strip(),
@@ -865,6 +995,7 @@ else:
                     "kredit_info": "",
                     "pensyarah_asal": "",
                     "lock_agihan": "TIDAK",
+                    "share_allowed": new_share,
                     "minggu_mula_kelas": int(new_start),
                     "minggu_akhir_kelas": int(new_end)
                 }
@@ -909,8 +1040,34 @@ else:
                 ] = "TUTUP"
                 st.success(f"Semua kelas bagi {selected_subject} telah ditutup.")
 
+    with manager_tabs[3]:
+        st.info("Sharing bermaksud subjek sama dan group sama. Contoh MAT112-A1 diajar oleh dua pensyarah. Sistem akan minimize sharing.")
+
+        share_df = st.session_state.class_df[
+            ["kelas_id", "kod_kursus", "kelas_baru", "status_kelas", "share_allowed", "minggu_mula_kelas", "minggu_akhir_kelas", "perincian"]
+        ].copy()
+
+        share_edit = st.data_editor(
+            share_df,
+            use_container_width=True,
+            height=400,
+            column_config={
+                "share_allowed": st.column_config.SelectboxColumn(
+                    "share_allowed",
+                    options=["TIDAK", "YA"],
+                    required=True
+                )
+            }
+        )
+
+        if st.button("💾 Simpan Share Permission", use_container_width=True):
+            mapping = share_edit.set_index("kelas_id")["share_allowed"].map(yes_no).to_dict()
+            st.session_state.class_df["share_allowed"] = st.session_state.class_df["kelas_id"].map(mapping).fillna("TIDAK")
+            st.success("Share permission disimpan.")
+
     df_all = st.session_state.class_df.copy()
     df_all["status_kelas"] = df_all["status_kelas"].map(standardize_status)
+    df_all["share_allowed"] = df_all["share_allowed"].map(yes_no)
 
     df_active = df_all[df_all["status_kelas"].isin(["BUKA", "BARU"])].copy()
     df_closed = df_all[df_all["status_kelas"] == "TUTUP"].copy()
@@ -932,12 +1089,12 @@ else:
         metric_card("Pensyarah Aktif", int(dfl["active"].sum()), "Boleh mengajar")
 
     with k5:
-        metric_card("Kapasiti Kredit", int(dfl["effective_max_kredit"].sum()), "Daripada fail pensyarah")
+        metric_card("Share Allowed", int((df_active["share_allowed"] == "YA").sum()), "Class yang boleh share")
 
     if int(dfl["effective_max_kredit"].sum()) < int(df_active["jam_kredit"].sum()):
         st.error("Kapasiti maksimum pensyarah tidak cukup untuk cover semua kelas aktif.")
 
-    with st.expander("Lihat Data Aktif / Tutup", expanded=False):
+    with st.expander("Lihat Data Aktif / Tutup / Pensyarah", expanded=False):
         t1, t2, t3 = st.tabs(["Kelas Aktif", "Kelas Tutup", "Pensyarah"])
 
         with t1:
@@ -953,19 +1110,19 @@ else:
 
     if st.button("🚀 Run Allocation", use_container_width=True):
         pref = build_preference_score(dfl)
-        solver_status, assigned = solve_allocation(df_active, dfl, pref)
+        solver_status, assigned_df = solve_allocation(df_active, dfl, pref)
 
         if solver_status == "Optimal":
             st.success("Optimization Status: Optimal")
         else:
             st.warning(f"Optimization Status: {solver_status}")
 
-        df_assign, df_summary, df_combined, df_unassigned, df_status = build_outputs(
+        df_assign, df_summary, df_shared_class, df_shared_only, df_unassigned, df_status = build_outputs(
             df_active,
             df_closed,
             dfl,
             pref,
-            assigned
+            assigned_df
         )
 
         s = df_status.iloc[0]
@@ -981,18 +1138,18 @@ else:
             metric_card("Preference", f"{s['preference_rate_%']}%", "Ikut pilihan")
 
         with d3:
-            metric_card("Underload", int(s["pensyarah_underload"]), "Kurang minimum")
+            metric_card("Shared Class", int(s["jumlah_shared_class"]), "Same subject + same group")
 
         with d4:
-            metric_card("Overload", int(s["pensyarah_overload"]), "Lebih maksimum")
+            metric_card("Underload", int(s["pensyarah_underload"]), "Kurang minimum")
 
         with d5:
-            metric_card("Closed", int(s["jumlah_kelas_tutup"]), "Kelas ditutup")
+            metric_card("Overload", int(s["pensyarah_overload"]), "Lebih maksimum")
 
         result_tabs = st.tabs([
             "📌 Allocation",
             "👤 Lecturer Analysis",
-            "🤝 Combined Teaching",
+            "🤝 Shared Class",
             "📊 Charts",
             "🔍 Audit",
             "📥 Export"
@@ -1007,25 +1164,32 @@ else:
             st.dataframe(df_summary, use_container_width=True, height=540)
 
         with result_tabs[2]:
-            st.markdown("### Combined Teaching by Subject")
-            st.dataframe(df_combined, use_container_width=True, height=340)
+            st.markdown("### Shared Class Analysis")
+            st.caption("Sharing hanya dikira apabila kelas_id yang sama mempunyai lebih daripada seorang pensyarah.")
 
-            st.markdown("### Combined Teaching by Lecturer")
+            st.dataframe(df_shared_class, use_container_width=True, height=340)
 
-            if "combined_dengan" in df_summary.columns:
-                st.dataframe(
-                    df_summary[
-                        [
-                            "pensyarah",
-                            "jumlah_jam_mengajar",
-                            "senarai_subjek",
-                            "combined_dengan",
-                            "status_load"
-                        ]
-                    ],
-                    use_container_width=True,
-                    height=420
-                )
+            st.markdown("### Shared Class Sahaja")
+            if df_shared_only.empty:
+                st.success("Tiada shared class. Semua kelas diajar oleh seorang pensyarah sahaja.")
+            else:
+                st.warning("Ada shared class.")
+                st.dataframe(df_shared_only, use_container_width=True, height=320)
+
+            st.markdown("### Shared Class by Lecturer")
+            st.dataframe(
+                df_summary[
+                    [
+                        "pensyarah",
+                        "jumlah_jam_mengajar",
+                        "senarai_subjek",
+                        "shared_class_dengan",
+                        "status_load"
+                    ]
+                ],
+                use_container_width=True,
+                height=420
+            )
 
         with result_tabs[3]:
             st.markdown("### Workload Distribution")
@@ -1080,6 +1244,10 @@ else:
                 st.error("Pensyarah overload.")
                 st.dataframe(over, use_container_width=True)
 
+            if not df_shared_only.empty:
+                st.warning("Shared class wujud. Semak sebab: pensyarah masuk lambat / partial availability / share_allowed.")
+                st.dataframe(df_shared_only, use_container_width=True)
+
             st.markdown("### Kelas Ditutup")
             st.dataframe(df_closed, use_container_width=True, height=300)
 
@@ -1088,7 +1256,8 @@ else:
                 "Status": df_status,
                 "Agihan": df_assign,
                 "Analisis_Pensyarah": df_summary,
-                "Combined_Teaching": df_combined,
+                "Shared_Class_All": df_shared_class,
+                "Shared_Class_Only": df_shared_only,
                 "Kelas_Tidak_Diagih": df_unassigned,
                 "Kelas_Tutup": df_closed,
                 "Main_File_Updated": df_all
@@ -1097,7 +1266,7 @@ else:
             st.download_button(
                 "📥 Download Full Result Excel",
                 data=output,
-                file_name="ILASO_result.xlsx",
+                file_name="ILASO_result_correct_shared_class.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
@@ -1117,7 +1286,7 @@ else:
 st.markdown(
     """
     <div class="footer">
-        ILASO uses fixed semester weeks = 14 and lecturer workload limits directly from the uploaded lecturer file.
+        ILASO fixed semester = 14 weeks. Sharing means the same subject and same group/class is taught by more than one lecturer.
     </div>
     """,
     unsafe_allow_html=True
