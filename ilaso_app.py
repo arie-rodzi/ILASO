@@ -514,7 +514,6 @@ def solve_allocation(dfc, dfl, pref):
                     prob += x[c][l] == 0
 
         # Workload adaptive fairness
-        # Workload adaptive fairness
 for l in lecturers:
 
     total_load = pl.lpSum(
@@ -569,13 +568,6 @@ for l in lecturers:
 
         if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
             prob += total_load <= 0
-
-            else:
-                prob += under[l] == 0
-                prob += over[l] == 0
-
-                if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
-                    prob += total_load <= 0
 
         # Link lecturer-subject
         for c in classes:
