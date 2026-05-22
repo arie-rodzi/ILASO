@@ -1239,57 +1239,15 @@ else:
 
         s = df_status.iloc[0]
 
-        st.markdown(
-            '<div class="section-title">5. Executive Dashboard</div>',
-            unsafe_allow_html=True
-        )
-
-        d1, d2, d3, d4, d5 = st.columns(5)
-
-        with d1:
-            metric_card(
-                "Coverage",
-                f"{s['kelas_diagih']}/{s['jumlah_kelas_aktif']}",
-                "Kelas diagih"
-            )
-
-        with d2:
-            metric_card(
-                "Fair Load",
-                int(s["pensyarah_adil"]),
-                "Pensyarah 15–17 KS"
-            )
-
-        with d3:
-            metric_card(
-                "Underload",
-                int(s["pensyarah_underload"]),
-                "Kurang 15 KS"
-            )
-
-        with d4:
-            metric_card(
-                "Emergency",
-                int(s["pensyarah_emergency_overload"]),
-                "Lebih 17 KS"
-            )
-
-        with d5:
-            metric_card(
-                "Cover Sementara",
-                int(s["kes_cover_sementara"]),
-                "Masuk lewat"
-            )
-
-              result_tabs = st.tabs([
-    "📌 Allocation",
-    "👤 Lecturer Analysis",
-    "⏱️ Temporary Cover",
-    "🚨 Emergency Reallocation",
-    "📊 Charts",
-    "🔍 Audit",
-    "📥 Export"
-])
+                result_tabs = st.tabs([
+            "📌 Allocation",
+            "👤 Lecturer Analysis",
+            "⏱️ Temporary Cover",
+            "🚨 Emergency Reallocation",
+            "📊 Charts",
+            "🔍 Audit",
+            "📥 Export"
+        ])
 
         with result_tabs[0]:
 
@@ -1318,9 +1276,7 @@ else:
             if df_temp_cover.empty:
                 st.success("Tiada kes cover sementara.")
             else:
-                st.warning(
-                    "Ada pensyarah masuk lewat. Minggu awal perlu cover sementara."
-                )
+                st.warning("Ada pensyarah masuk lewat. Minggu awal perlu cover sementara.")
 
                 st.dataframe(
                     df_temp_cover,
@@ -1329,6 +1285,151 @@ else:
                 )
 
         with result_tabs[3]:
+
+            st.markdown("### 🚨 Emergency Reallocation")
+            st.caption("Masukkan nama pensyarah dan minggu tidak available. Sistem hanya papar kelas terlibat sahaja.")
+
+            emergency_lecturer = st.selectbox(
+                "Pilih Pensyarah Emergency",
+                sorted(df_summary["pensyarah"].tolist())
+            )
+
+            c1, c2 = st.columns(2)
+
+            with c1:
+                emergency_start_week = st.number_input(
+                    "Minggu mula tidak available",
+                    1,
+                    SEMESTER_WEEKS,
+                    5,
+                    1
+                )
+
+            with c2:
+                emergency_end_week = st.number_input(
+                    "Minggu akhir tidak available",
+                    1,
+                    SEMESTER_WEEKS,
+                    10,
+                    1
+                )
+
+            if st.button("🚨 Run Emergency Reallocation", use_container_width=True):
+
+                if emergency_end_week < emergency_start_week:
+                    st.error("Minggu akhir tidak boleh kurang daripada minggu mula.")
+
+                else:
+                    emergency_classes = df_assign[
+                        df_assign["pensyarah_utama"] == emergency_lecturer
+                    ].copy()
+
+                    if emergency_classes.empty:
+                        st.warning("Pensyarah ini tiada kelas dalam allocation semasa.")
+
+                    else:
+                        current_load = (
+                            df_assign.groupby("pensyarah_utama")["KS"]
+                            .sum()
+                            .reset_index()
+                            .rename(columns={
+                                "pensyarah_utama": "pensyarah",
+                                "KS": "jumlah_KS_semasa"
+                            })
+                        )
+
+                        emergency_rows = []
+
+                        for _, row in emergency_classes.iterrows():
+
+                            kelas_start = int(row["minggu_mula_kelas"])
+                            kelas_end = int(row["minggu_akhir_kelas"])
+
+                            overlap_start = max(kelas_start, int(emergency_start_week))
+                            overlap_end = min(kelas_end, int(emergency_end_week))
+
+                            if overlap_start > overlap_end:
+                                continue
+
+                            bil_minggu_ganti = overlap_end - overlap_start + 1
+                            jumlah_minggu_kelas = kelas_end - kelas_start + 1
+
+                            ks_ganti = round(
+                                float(row["KS"]) * bil_minggu_ganti / jumlah_minggu_kelas,
+                                2
+                            )
+
+                            calon = df_summary[
+                                (df_summary["pensyarah"] != emergency_lecturer)
+                                & (df_summary["aktif"] == True)
+                                & (df_summary["minggu_mula_available"] <= overlap_start)
+                            ].copy()
+
+                            calon = calon.merge(
+                                current_load,
+                                on="pensyarah",
+                                how="left"
+                            )
+
+                            calon["jumlah_KS_semasa"] = calon["jumlah_KS_semasa"].fillna(0)
+
+                            calon["ajar_subjek_sama"] = calon["senarai_subjek"].astype(str).apply(
+                                lambda x: 1 if row["kod_kursus"] in x else 0
+                            )
+
+                            calon["anggaran_KS_lepas_ganti"] = calon["jumlah_KS_semasa"] + ks_ganti
+
+                            calon = calon[
+                                calon["anggaran_KS_lepas_ganti"] <= calon["maksimum_KS"]
+                            ].copy()
+
+                            if calon.empty:
+                                pengganti = "TIADA CALON SESUAI"
+                                status = "GAGAL"
+                            else:
+                                calon = calon.sort_values(
+                                    ["ajar_subjek_sama", "jumlah_KS_semasa"],
+                                    ascending=[False, True]
+                                )
+
+                                pengganti = calon.iloc[0]["pensyarah"]
+                                status = "OK"
+
+                            emergency_rows.append({
+                                "kelas_id": row["kelas_id"],
+                                "kod_kursus": row["kod_kursus"],
+                                "kelas_baru": row["kelas_baru"],
+                                "pensyarah_asal": emergency_lecturer,
+                                "minggu_asal_sebelum_emergency": (
+                                    f"{kelas_start}-{overlap_start - 1}"
+                                    if kelas_start < overlap_start
+                                    else ""
+                                ),
+                                "pensyarah_pengganti": pengganti,
+                                "minggu_pengganti": f"{overlap_start}-{overlap_end}",
+                                "minggu_asal_sambung_semula": (
+                                    f"{overlap_end + 1}-{kelas_end}"
+                                    if overlap_end < kelas_end
+                                    else ""
+                                ),
+                                "KS_subjek": float(row["KS"]),
+                                "bil_minggu_ganti": bil_minggu_ganti,
+                                "KS_pengganti": ks_ganti,
+                                "status": status
+                            })
+
+                        df_emergency = pd.DataFrame(emergency_rows)
+
+                        if df_emergency.empty:
+                            st.info("Tiada kelas yang bertindih dengan minggu emergency.")
+                        else:
+                            st.dataframe(
+                                df_emergency,
+                                use_container_width=True,
+                                height=420
+                            )
+
+        with result_tabs[4]:
 
             st.markdown("### Workload Distribution")
 
@@ -1351,15 +1452,12 @@ else:
                 )
 
             else:
-
                 st.dataframe(
-                    df_summary[
-                        ["pensyarah", "jumlah_KS"]
-                    ],
+                    df_summary[["pensyarah", "jumlah_KS"]],
                     use_container_width=True
                 )
 
-        with result_tabs[4]:
+        with result_tabs[5]:
 
             st.markdown("### Audit Semakan")
 
@@ -1367,32 +1465,18 @@ else:
                 st.success("Semua kelas aktif berjaya diagih.")
             else:
                 st.error("Ada kelas aktif tidak diagih.")
-                st.dataframe(
-                    df_unassigned,
-                    use_container_width=True
-                )
+                st.dataframe(df_unassigned, use_container_width=True)
 
-            under = df_summary[
-                df_summary["status_load"] == "UNDERLOAD"
-            ]
-
-            emergency = df_summary[
-                df_summary["status_load"] == "EMERGENCY OVERLOAD"
-            ]
+            under = df_summary[df_summary["status_load"] == "UNDERLOAD"]
+            emergency = df_summary[df_summary["status_load"] == "OVERLOAD"]
 
             if not under.empty:
                 st.warning("Pensyarah underload.")
-                st.dataframe(
-                    under,
-                    use_container_width=True
-                )
+                st.dataframe(under, use_container_width=True)
 
             if not emergency.empty:
-                st.error("Pensyarah emergency overload.")
-                st.dataframe(
-                    emergency,
-                    use_container_width=True
-                )
+                st.error("Pensyarah overload.")
+                st.dataframe(emergency, use_container_width=True)
 
             st.markdown("### Kelas Ditutup")
 
@@ -1402,7 +1486,7 @@ else:
                 height=300
             )
 
-        with result_tabs[5]:
+        with result_tabs[6]:
 
             output = to_excel_bytes({
                 "Status": df_status,
@@ -1433,13 +1517,3 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-
-
-st.markdown(
-    """
-    <div class="footer">
-        ILASO Fair KS Engine • Target 16 KS • Fair range 15–17 KS • Late-entry lecturers supported
-    </div>
-    """,
-    unsafe_allow_html=True
-)
