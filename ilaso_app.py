@@ -1239,7 +1239,7 @@ else:
 
         s = df_status.iloc[0]
 
-                result_tabs = st.tabs([
+        result_tabs = st.tabs([
             "📌 Allocation",
             "👤 Lecturer Analysis",
             "⏱️ Temporary Cover",
