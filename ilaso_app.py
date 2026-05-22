@@ -514,18 +514,61 @@ def solve_allocation(dfc, dfl, pref):
                     prob += x[c][l] == 0
 
         # Workload adaptive fairness
-        for l in lecturers:
+        # Workload adaptive fairness
+for l in lecturers:
 
-            total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
-            start_week = int(lect_rows.loc[l, "minggu_mula_available"])
+    total_load = pl.lpSum(
+        credit[c] * x[c][l]
+        for c in classes
+    )
 
-            if l in wajib_ajar:
-                prob += total_load >= fair_min
-                prob += total_load <= fair_max
-                prob += pl.lpSum(x[c][l] for c in classes) >= 1
+    start_week = int(
+        lect_rows.loc[l, "minggu_mula_available"]
+    )
 
-                prob += target_ks - total_load <= under[l]
-                prob += total_load - target_ks <= over[l]
+    if l in wajib_ajar:
+
+        # Ambil min/max individu dari file pensyarah
+        personal_min = int(
+            lect_rows.loc[l, "min_ks"]
+        )
+
+        personal_max = int(
+            lect_rows.loc[l, "max_ks"]
+        )
+
+        # Constraint sebenar
+        prob += total_load >= personal_min
+        prob += total_load <= personal_max
+
+        # Semua pensyarah aktif wajib dapat sekurang-kurangnya 1 kelas
+        prob += pl.lpSum(
+            x[c][l] for c in classes
+        ) >= 1
+
+        # Target adil ikut range individu
+        personal_target = min(
+            max(target_ks, personal_min),
+            personal_max
+        )
+
+        prob += (
+            personal_target - total_load
+            <= under[l]
+        )
+
+        prob += (
+            total_load - personal_target
+            <= over[l]
+        )
+
+    else:
+
+        prob += under[l] == 0
+        prob += over[l] == 0
+
+        if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
+            prob += total_load <= 0
 
             else:
                 prob += under[l] == 0
