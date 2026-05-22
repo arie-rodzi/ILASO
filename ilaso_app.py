@@ -1281,14 +1281,15 @@ else:
                 "Masuk lewat"
             )
 
-        result_tabs = st.tabs([
-            "📌 Allocation",
-            "👤 Lecturer Analysis",
-            "⏱️ Temporary Cover",
-            "📊 Charts",
-            "🔍 Audit",
-            "📥 Export"
-        ])
+              result_tabs = st.tabs([
+    "📌 Allocation",
+    "👤 Lecturer Analysis",
+    "⏱️ Temporary Cover",
+    "🚨 Emergency Reallocation",
+    "📊 Charts",
+    "🔍 Audit",
+    "📥 Export"
+])
 
         with result_tabs[0]:
 
