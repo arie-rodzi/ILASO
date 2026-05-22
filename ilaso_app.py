@@ -597,11 +597,9 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
     rows = []
 
     if assigned_df.empty:
-
         df_assign = pd.DataFrame()
 
     else:
-
         for _, ar in assigned_df.iterrows():
 
             cid = ar["kelas_id"]
@@ -627,16 +625,8 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
                 "saiz_kelas": int(r.get("saiz_kelas", 0)),
                 "pensyarah_utama": lname,
                 "peranan": lrow["peranan"],
-                "padanan_pilihan": get_pref_label(
-                    lname,
-                    subj,
-                    dfl
-                ),
-                "skor_pilihan": get_pref_score(
-                    lname,
-                    subj,
-                    pref
-                ),
+                "padanan_pilihan": get_pref_label(lname, subj, dfl),
+                "skor_pilihan": get_pref_score(lname, subj, pref),
                 "minggu_mula_kelas": int(r["minggu_mula_kelas"]),
                 "minggu_akhir_kelas": int(r["minggu_akhir_kelas"]),
                 "minggu_mula_pensyarah": start_week,
@@ -647,6 +637,7 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
                     if needs_temp_cover
                     else ""
                 ),
+                "pensyarah_cover_sementara": "",
                 "catatan": (
                     "Pensyarah masuk lewat. Perlu pensyarah sementara cover minggu awal."
                     if needs_temp_cover
@@ -657,6 +648,49 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
 
         df_assign = pd.DataFrame(rows)
 
+        # Cari pensyarah cover sementara selepas df_assign siap
+        for idx, row in df_assign.iterrows():
+
+            if row["perlu_cover_sementara"] == "YA":
+
+                subj = row["kod_kursus"]
+                lname = row["pensyarah_utama"]
+
+                same_subject = df_assign[
+                    (df_assign["kod_kursus"] == subj)
+                    & (df_assign["pensyarah_utama"] != lname)
+                ].copy()
+
+                if not same_subject.empty:
+
+                    lecturer_load = (
+                        df_assign.groupby("pensyarah_utama")["KS"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={
+                            "pensyarah_utama": "calon_cover",
+                            "KS": "jumlah_KS"
+                        })
+                    )
+
+                    candidate = same_subject[
+                        ["pensyarah_utama"]
+                    ].drop_duplicates().rename(columns={
+                        "pensyarah_utama": "calon_cover"
+                    })
+
+                    candidate = candidate.merge(
+                        lecturer_load,
+                        on="calon_cover",
+                        how="left"
+                    ).sort_values(
+                        "jumlah_KS",
+                        ascending=True
+                    )
+
+                    if not candidate.empty:
+                        df_assign.loc[idx, "pensyarah_cover_sementara"] = candidate.iloc[0]["calon_cover"]
+
     summary_rows = []
 
     for _, lrow in dfl.iterrows():
@@ -666,42 +700,30 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
         if df_assign.empty:
             tmp = pd.DataFrame()
         else:
-            tmp = df_assign[
-                df_assign["pensyarah_utama"] == lname
-            ]
+            tmp = df_assign[df_assign["pensyarah_utama"] == lname]
 
         total_ks = int(tmp["KS"].sum()) if not tmp.empty else 0
         total_class = int(tmp["kelas_id"].nunique()) if not tmp.empty else 0
-        subjects = sorted(
-            tmp["kod_kursus"].unique().tolist()
-        ) if not tmp.empty else []
+        subjects = sorted(tmp["kod_kursus"].unique().tolist()) if not tmp.empty else []
 
         if not bool(lrow["active"]):
             status_load = "TIDAK AKTIF / CUTI"
         elif int(lrow["minggu_mula_available"]) > LATE_ENTRY_CUTOFF_WEEK:
             status_load = "MASUK SELEPAS MINGGU 10"
-        elif total_ks < FAIR_MIN_KS:
+        elif total_ks < int(lrow["min_ks"]):
             status_load = "UNDERLOAD"
-        elif total_ks > FAIR_MAX_KS:
-            status_load = "EMERGENCY OVERLOAD"
+        elif total_ks > int(lrow["max_ks"]):
+            status_load = "OVERLOAD"
         else:
             status_load = "ADIL"
 
         detail_list = []
 
         if not tmp.empty:
-
             for subj, g in tmp.groupby("kod_kursus"):
-
-                cls = ", ".join(
-                    g["kelas_baru"].astype(str).tolist()
-                )
-
+                cls = ", ".join(g["kelas_baru"].astype(str).tolist())
                 cr = int(g["KS"].sum())
-
-                detail_list.append(
-                    f"{subj}: {cr} KS ({cls})"
-                )
+                detail_list.append(f"{subj}: {cr} KS ({cls})")
 
         summary_rows.append({
             "pensyarah": lname,
@@ -720,6 +742,42 @@ def build_outputs(dfc_active, df_closed, dfl, pref, assigned_df):
             "status_load": status_load
         })
 
+    df_summary = pd.DataFrame(summary_rows)
+
+    assigned_ids = set(df_assign["kelas_id"]) if not df_assign.empty else set()
+
+    df_unassigned = dfc_active[
+        ~dfc_active["kelas_id"].isin(assigned_ids)
+    ].copy()
+
+    df_temp_cover = (
+        df_assign[df_assign["perlu_cover_sementara"] == "YA"].copy()
+        if not df_assign.empty
+        else pd.DataFrame()
+    )
+
+    df_status = pd.DataFrame([{
+        "jumlah_kelas_aktif": len(dfc_active),
+        "jumlah_kelas_tutup": len(df_closed),
+        "kelas_diagih": len(assigned_ids),
+        "kelas_tidak_diagih": len(df_unassigned),
+        "jumlah_KS_aktif": int(dfc_active["ks"].sum()),
+        "KS_diagih": int(df_assign["KS"].sum()) if not df_assign.empty else 0,
+        "jumlah_pensyarah": len(dfl),
+        "pensyarah_aktif": int(dfl["active"].sum()),
+        "pensyarah_adil": int((df_summary["status_load"] == "ADIL").sum()),
+        "pensyarah_underload": int((df_summary["status_load"] == "UNDERLOAD").sum()),
+        "pensyarah_emergency_overload": int((df_summary["status_load"] == "OVERLOAD").sum()),
+        "kes_cover_sementara": len(df_temp_cover)
+    }])
+
+    return (
+        df_assign,
+        df_summary,
+        df_temp_cover,
+        df_unassigned,
+        df_status
+    )
     df_summary = pd.DataFrame(summary_rows)
 
     assigned_ids = set(
