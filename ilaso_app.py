@@ -540,34 +540,57 @@ for l in lecturers:
         prob += total_load >= personal_min
         prob += total_load <= personal_max
 
-        # Semua pensyarah aktif wajib dapat sekurang-kurangnya 1 kelas
-        prob += pl.lpSum(
-            x[c][l] for c in classes
-        ) >= 1
+              # Workload adaptive fairness
+        for l in lecturers:
 
-        # Target adil ikut range individu
-        personal_target = min(
-            max(target_ks, personal_min),
-            personal_max
-        )
+            total_load = pl.lpSum(
+                credit[c] * x[c][l]
+                for c in classes
+            )
 
-        prob += (
-            personal_target - total_load
-            <= under[l]
-        )
+            start_week = int(
+                lect_rows.loc[l, "minggu_mula_available"]
+            )
 
-        prob += (
-            total_load - personal_target
-            <= over[l]
-        )
+            if l in wajib_ajar:
 
-    else:
+                personal_min = int(
+                    lect_rows.loc[l, "min_ks"]
+                )
 
-        prob += under[l] == 0
-        prob += over[l] == 0
+                personal_max = int(
+                    lect_rows.loc[l, "max_ks"]
+                )
 
-        if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
-            prob += total_load <= 0
+                prob += total_load >= personal_min
+                prob += total_load <= personal_max
+
+                prob += pl.lpSum(
+                    x[c][l] for c in classes
+                ) >= 1
+
+                personal_target = min(
+                    max(target_ks, personal_min),
+                    personal_max
+                )
+
+                prob += (
+                    personal_target - total_load
+                    <= under[l]
+                )
+
+                prob += (
+                    total_load - personal_target
+                    <= over[l]
+                )
+
+            else:
+
+                prob += under[l] == 0
+                prob += over[l] == 0
+
+                if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
+                    prob += total_load <= 0
 
         # Link lecturer-subject
         for c in classes:
@@ -577,16 +600,26 @@ for l in lecturers:
 
         # Maximum 2 subjek berbeza
         for l in lecturers:
-            prob += pl.lpSum(y[l][s] for s in subjects) <= MAX_SUBJECTS
+            prob += pl.lpSum(
+                y[l][s] for s in subjects
+            ) <= MAX_SUBJECTS
 
         # Maximum kelas subjek sama
         for l in lecturers:
             for s in subjects:
-                subject_classes = [c for c in classes if cls_subject[c] == s]
-                prob += pl.lpSum(x[c][l] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT
+                subject_classes = [
+                    c for c in classes
+                    if cls_subject[c] == s
+                ]
+
+                prob += pl.lpSum(
+                    x[c][l] for c in subject_classes
+                ) <= MAX_CLASSES_SAME_SUBJECT
 
         preference_reward = pl.lpSum(
-            credit[c] * get_pref_score(l, cls_subject[c], pref) * x[c][l]
+            credit[c]
+            * get_pref_score(l, cls_subject[c], pref)
+            * x[c][l]
             for c in classes
             for l in lecturers
         )
@@ -596,7 +629,6 @@ for l in lecturers:
             for l in wajib_ajar
         )
 
-        # Fairness lebih penting daripada preference
         prob += (
             100000 * fairness_penalty
             - 10 * preference_reward
@@ -614,6 +646,7 @@ for l in lecturers:
             for c in classes:
                 for l in lecturers:
                     val = float(pl.value(x[c][l]) or 0)
+
                     if val > 0.5:
                         assigned_rows.append({
                             "kelas_id": c,
@@ -630,7 +663,6 @@ for l in lecturers:
             return best_status, best_assigned
 
     return best_status or "Infeasible", best_assigned
-
 
 # ============================================================
 # OUTPUT BUILDER
