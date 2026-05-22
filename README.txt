@@ -1,5 +1,5 @@
-ILASO Premium 6-File System
-===========================
+ILASO 6-File System
+===================
 
 Run:
     pip install streamlit pandas numpy openpyxl pulp plotly
@@ -7,15 +7,25 @@ Run:
 
 Files:
 1. app.py               Main Streamlit app and workflow
-2. config_styles.py     Constants and premium CSS
-3. ui_components.py     Hero, KPI cards and reusable UI
+2. config_styles.py     Constants and interface CSS
+3. ui_components.py     Hero, KPI cards and reusable UI components
 4. data_utils.py        File reading, cleaning, preparation, export helpers
 5. optimizer.py         Fair KS optimizer and output builder
 6. emergency_engine.py  Emergency reallocation engine with repeated log support
 
-Emergency workflow:
-- Run Fair KS Allocation first.
-- Emergency section uses saved allocation only.
-- It does not rerun optimizer.
+Workflow:
+1. Upload Files
+2. Data Validation
+3. Class Manager
+4. Run Fair KS Allocation
+5. Emergency Reallocation
+6. Manual Fine Tuning
+7. Executive Dashboard and Export
+
+Important logic:
+- UI wording is English.
+- System uses KS terminology.
+- Fair allocation follows individual Minimum KS and Maximum KS.
+- Emergency Reallocation does not rerun the main optimizer.
 - Multiple emergency cases are appended into Emergency Log.
-- Previous emergency KS is considered when selecting next replacement lecturer.
+- Manual Fine Tuning allows human adjustment after the optimizer and updates the workload chart.
