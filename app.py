@@ -24,7 +24,7 @@ ensure_emergency_log(st.session_state)
 
 # Sidebar premium navigation note
 with st.sidebar:
-    st.markdown("### ILASO Premium")
+    st.markdown("### ILASO ")
     st.markdown("Fair KS allocation + emergency log.")
     st.markdown("---")
     st.markdown("**Workflow**")
