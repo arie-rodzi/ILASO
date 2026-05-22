@@ -458,244 +458,143 @@ def solve_allocation(dfc, dfl, pref):
     credit = dfc.set_index("kelas_id")["ks"].astype(int).to_dict()
     cls_subject = dfc.set_index("kelas_id")["kod_kursus"].to_dict()
 
-    min_k = dfl.set_index("nama")["min_ks"].astype(int).to_dict()
-    max_k = dfl.set_index("nama")["max_ks"].astype(int).to_dict()
     active = dfl.set_index("nama")["active"].to_dict()
-
     class_rows = dfc.set_index("kelas_id")
     lect_rows = dfl.set_index("nama")
 
-    prob = pl.LpProblem("ILASO_Fair_KS_Allocation", pl.LpMinimize)
+    # Pensyarah wajib ajar = aktif dan masuk minggu 1 hingga 10
+    wajib_ajar = [
+        l for l in lecturers
+        if active[l] and int(lect_rows.loc[l, "minggu_mula_available"]) <= LATE_ENTRY_CUTOFF_WEEK
+    ]
 
-    x = pl.LpVariable.dicts(
-        "x",
-        (classes, lecturers),
-        0,
-        1,
-        cat="Binary"
-    )
+    total_ks = int(dfc["ks"].sum())
+    n_wajib = max(len(wajib_ajar), 1)
 
-    y = pl.LpVariable.dicts(
-        "y",
-        (lecturers, subjects),
-        0,
-        1,
-        cat="Binary"
-    )
+    # Adaptive target, bukan fixed 16
+    target_ks = round(total_ks / n_wajib)
 
-    under_target = pl.LpVariable.dicts(
-        "under_target",
-        lecturers,
-        lowBound=0
-    )
+    # Cuba julat fairness secara berperingkat
+    fairness_trials = [
+        (1, target_ks - 1, target_ks + 1),
+        (2, target_ks - 2, target_ks + 2),
+        (3, target_ks - 3, target_ks + 3),
+        (4, target_ks - 4, target_ks + 4),
+    ]
 
-    over_target = pl.LpVariable.dicts(
-        "over_target",
-        lecturers,
-        lowBound=0
-    )
+    best_status = None
+    best_assigned = pd.DataFrame()
 
-    zero_penalty = pl.LpVariable.dicts(
-        "zero_penalty",
-        lecturers,
-        0,
-        1,
-        cat="Binary"
-    )
+    for gap, fair_min, fair_max in fairness_trials:
 
-    emergency_over = pl.LpVariable.dicts(
-        "emergency_over",
-        lecturers,
-        lowBound=0
-    )
+        fair_min = max(fair_min, 0)
 
-    max_load_var = pl.LpVariable(
-        "max_load_var",
-        lowBound=0
-    )
+        prob = pl.LpProblem("ILASO_Adaptive_Fair_KS", pl.LpMinimize)
 
-    min_load_var = pl.LpVariable(
-        "min_load_var",
-        lowBound=0
-    )
+        x = pl.LpVariable.dicts("x", (classes, lecturers), 0, 1, cat="Binary")
+        y = pl.LpVariable.dicts("y", (lecturers, subjects), 0, 1, cat="Binary")
 
-    # --------------------------------------------------------
-    # 1 kelas = 1 pensyarah utama
-    # --------------------------------------------------------
-    for c in classes:
-        prob += pl.lpSum(
-            x[c][l] for l in lecturers
-        ) == 1
+        under = pl.LpVariable.dicts("under", lecturers, lowBound=0)
+        over = pl.LpVariable.dicts("over", lecturers, lowBound=0)
 
-    # --------------------------------------------------------
-    # Pensyarah tidak aktif tidak boleh mengajar
-    # --------------------------------------------------------
-    for l in lecturers:
+        # 1 kelas = 1 pensyarah
+        for c in classes:
+            prob += pl.lpSum(x[c][l] for l in lecturers) == 1
 
-        if not active[l]:
+        # Tidak aktif tidak boleh mengajar
+        for l in lecturers:
+            if not active[l]:
+                for c in classes:
+                    prob += x[c][l] == 0
+
+        # Availability
+        for c in classes:
+            for l in lecturers:
+                if not is_available_for_class(lect_rows.loc[l], class_rows.loc[c]):
+                    prob += x[c][l] == 0
+
+        # Workload adaptive fairness
+        for l in lecturers:
+
+            total_load = pl.lpSum(credit[c] * x[c][l] for c in classes)
+            start_week = int(lect_rows.loc[l, "minggu_mula_available"])
+
+            if l in wajib_ajar:
+                prob += total_load >= fair_min
+                prob += total_load <= fair_max
+                prob += pl.lpSum(x[c][l] for c in classes) >= 1
+
+                prob += target_ks - total_load <= under[l]
+                prob += total_load - target_ks <= over[l]
+
+            else:
+                prob += under[l] == 0
+                prob += over[l] == 0
+
+                if active[l] and start_week > LATE_ENTRY_CUTOFF_WEEK:
+                    prob += total_load <= 0
+
+        # Link lecturer-subject
+        for c in classes:
+            s = cls_subject[c]
+            for l in lecturers:
+                prob += x[c][l] <= y[l][s]
+
+        # Maximum 2 subjek berbeza
+        for l in lecturers:
+            prob += pl.lpSum(y[l][s] for s in subjects) <= MAX_SUBJECTS
+
+        # Maximum kelas subjek sama
+        for l in lecturers:
+            for s in subjects:
+                subject_classes = [c for c in classes if cls_subject[c] == s]
+                prob += pl.lpSum(x[c][l] for c in subject_classes) <= MAX_CLASSES_SAME_SUBJECT
+
+        preference_reward = pl.lpSum(
+            credit[c] * get_pref_score(l, cls_subject[c], pref) * x[c][l]
+            for c in classes
+            for l in lecturers
+        )
+
+        fairness_penalty = pl.lpSum(
+            under[l] + over[l]
+            for l in wajib_ajar
+        )
+
+        # Fairness lebih penting daripada preference
+        prob += (
+            100000 * fairness_penalty
+            - 10 * preference_reward
+        )
+
+        solver = pl.PULP_CBC_CMD(msg=False, timeLimit=240)
+        prob.solve(solver)
+
+        status = pl.LpStatus[prob.status]
+
+        if status == "Optimal":
+
+            assigned_rows = []
 
             for c in classes:
-                prob += x[c][l] == 0
+                for l in lecturers:
+                    val = float(pl.value(x[c][l]) or 0)
+                    if val > 0.5:
+                        assigned_rows.append({
+                            "kelas_id": c,
+                            "pensyarah": l
+                        })
 
-    # --------------------------------------------------------
-    # Availability
-    # --------------------------------------------------------
-    for c in classes:
+            best_status = status
+            best_assigned = pd.DataFrame(assigned_rows)
 
-        for l in lecturers:
-
-            if not is_available_for_class(
-                lect_rows.loc[l],
-                class_rows.loc[c]
-            ):
-                prob += x[c][l] == 0
-
-    # --------------------------------------------------------
-    # Workload constraints
-    # --------------------------------------------------------
-    for l in lecturers:
-
-        total_load = pl.lpSum(
-            credit[c] * x[c][l]
-            for c in classes
-        )
-
-        start_week = int(
-            lect_rows.loc[l, "minggu_mula_available"]
-        )
-
-        if active[l] and start_week <= LATE_ENTRY_CUTOFF_WEEK:
-
-            prob += total_load >= FAIR_MIN_KS
-            prob += total_load <= EMERGENCY_MAX_KS
-
-            prob += total_load <= max_load_var
-            prob += total_load >= min_load_var
-
-            prob += TARGET_KS - total_load <= under_target[l]
-            prob += total_load - TARGET_KS <= over_target[l]
-
-            prob += emergency_over[l] >= total_load - FAIR_MAX_KS
-
-            prob += pl.lpSum(
-                x[c][l] for c in classes
-            ) >= 1
-
-            prob += pl.lpSum(
-                x[c][l] for c in classes
-            ) >= 1 - zero_penalty[l]
-
-        else:
-
-            prob += total_load <= max_k[l]
-            prob += under_target[l] == 0
-            prob += over_target[l] == 0
-            prob += emergency_over[l] == 0
-            prob += zero_penalty[l] == 0
-
-    # --------------------------------------------------------
-    # Link lecturer-subject
-    # --------------------------------------------------------
-    for c in classes:
-
-        s = cls_subject[c]
-
-        for l in lecturers:
-            prob += x[c][l] <= y[l][s]
-
-    # --------------------------------------------------------
-    # Maximum 2 subjek berbeza
-    # --------------------------------------------------------
-    for l in lecturers:
-
-        prob += pl.lpSum(
-            y[l][s] for s in subjects
-        ) <= MAX_SUBJECTS
-
-    # --------------------------------------------------------
-    # Maximum kelas subjek sama
-    # --------------------------------------------------------
-    for l in lecturers:
-
-        for s in subjects:
-
-            subject_classes = [
-                c for c in classes
-                if cls_subject[c] == s
-            ]
-
-            prob += pl.lpSum(
-                x[c][l] for c in subject_classes
-            ) <= MAX_CLASSES_SAME_SUBJECT
-
-    # --------------------------------------------------------
-    # Preference reward
-    # --------------------------------------------------------
-    preference_reward = pl.lpSum(
-        credit[c]
-        * get_pref_score(
-            l,
-            cls_subject[c],
-            pref
-        )
-        * x[c][l]
-        for c in classes
-        for l in lecturers
-    )
-
-    balance_penalty = pl.lpSum(
-        under_target[l] + over_target[l]
-        for l in lecturers
-        if active[l]
-    )
-
-    emergency_penalty = pl.lpSum(
-        emergency_over[l]
-        for l in lecturers
-        if active[l]
-    )
-
-    zero_load_penalty = pl.lpSum(
-        zero_penalty[l]
-        for l in lecturers
-        if active[l]
-    )
-
-    prob += (
-        W_BALANCE * balance_penalty
-        + W_RANGE * (max_load_var - min_load_var)
-        + W_EMERGENCY * emergency_penalty
-        + W_ZERO * zero_load_penalty
-        - W_PREF * preference_reward
-    )
-
-    solver = pl.PULP_CBC_CMD(
-        msg=False,
-        timeLimit=240
-    )
-
-    prob.solve(solver)
-
-    status = pl.LpStatus[prob.status]
-
-    assigned_rows = []
-
-    for c in classes:
-
-        for l in lecturers:
-
-            val = float(
-                pl.value(x[c][l]) or 0
+            st.info(
+                f"Adaptive fairness digunakan: target ≈ {target_ks} KS, julat {fair_min}–{fair_max} KS."
             )
 
-            if val > 0.5:
+            return best_status, best_assigned
 
-                assigned_rows.append({
-                    "kelas_id": c,
-                    "pensyarah": l
-                })
-
-    return status, pd.DataFrame(assigned_rows)
+    return best_status or "Infeasible", best_assigned
 
 
 # ============================================================
